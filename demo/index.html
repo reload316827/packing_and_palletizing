@@ -1,0 +1,40 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Packing Demo 入口</title>
+  <style>
+    body { margin:0; font-family:"Microsoft YaHei","Segoe UI",sans-serif; background:#f3f7fb; color:#102a43; }
+    .wrap { min-height:100vh; display:grid; place-items:center; }
+    .card { width:min(760px,92vw); background:#fff; border:1px solid #d8e1ea; border-radius:16px; padding:24px; box-shadow:0 16px 30px rgba(16,42,67,.08); }
+    h1 { margin:0 0 6px; font-size:28px; }
+    p { margin:0 0 18px; color:#52657a; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    a { text-decoration:none; color:inherit; }
+    .item { border:1px solid #d8e1ea; border-radius:12px; padding:16px; background:#fbfdff; }
+    .item h3 { margin:0 0 6px; font-size:18px; }
+    .item span { color:#52657a; font-size:13px; }
+    .item:hover { border-color:#0f766e; }
+    @media (max-width:760px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Packing Demo 入口</h1>
+      <p>选择你要使用的演示版本：</p>
+      <div class="grid">
+        <a class="item" href="./list.html">
+          <h3>多页面版本</h3>
+          <span>列表页 / 详情页 / 规则页，含数据切换与筛选交互</span>
+        </a>
+        <a class="item" href="./overview.html">
+          <h3>汇总单页版本</h3>
+          <span>之前的总览页面，所有模块集中展示</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

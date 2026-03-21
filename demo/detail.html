@@ -1,0 +1,99 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务详情 - Demo</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1>Packing Studio</h1>
+          <p>多页面 Demo</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="./list.html">列表页</a>
+        <a class="active" href="./detail.html">详情页</a>
+        <a href="./rules.html">规则页</a>
+              <a href="./overview.html">???</a>\n      </nav>
+      <div class="sidebar-foot">支持 3D 视图切换与筛选</div>
+    </aside>
+
+    <main class="main">
+      <section class="card top">
+        <div>
+          <h2 id="detailTitle">任务详情</h2>
+          <p id="detailSub">-</p>
+        </div>
+        <div class="toolbar">
+          <div id="datasetSwitch"></div>
+          <a href="./list.html"><button class="ghost">返回列表</button></a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row" style="margin-bottom:10px;">
+          <select id="planSelect"></select>
+          <select id="modelFilter"></select>
+          <select id="specFilter"></select>
+          <button id="reset3dFilters" class="ghost">重置 3D 筛选</button>
+          <button id="viewPackingBtn">装箱视图</button>
+          <button id="viewPalletBtn" class="primary">装托视图</button>
+        </div>
+        <div class="kpis" id="detailKpis"></div>
+      </section>
+
+      <section class="card">
+        <div class="viewer-wrap">
+          <div id="viewer" class="viewer"></div>
+          <aside class="legend">
+            <h4>操作说明</h4>
+            <ul>
+              <li>左键：旋转</li>
+              <li>滚轮：缩放</li>
+              <li>右键：平移</li>
+              <li>双击空白：重置视角</li>
+            </ul>
+            <h4>当前场景</h4>
+            <p id="sceneMeta">-</p>
+            <h4 style="margin-top:10px;">标记规则</h4>
+            <p>内盒标签：型号；外箱标签：规格 + 内含型号集合。</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <article class="card">
+          <h3 style="margin-top:0;">方案对比</h3>
+          <div id="solutionGrid" class="grid-3"></div>
+        </article>
+        <article class="card">
+          <h3 style="margin-top:0;">订单组合</h3>
+          <p id="ordersText"></p>
+          <table>
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th>数值</th>
+              </tr>
+            </thead>
+            <tbody id="metricsTable"></tbody>
+          </table>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">Demo 交互：仅前端假数据</div>
+  <script src="./shared-data.js"></script>
+  <script src="./vendor/three.min.js"></script>
+  <script src="./vendor/OrbitControls.js"></script>
+  <script src="./detail.js"></script>
+</body>
+</html>
+

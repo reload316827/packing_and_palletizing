@@ -1,0 +1,21 @@
+﻿<svg width="900" height="420" viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2a0d0d"/>
+      <stop offset="100%" stop-color="#5a1f10"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="420" fill="url(#bg2)" rx="20"/>
+  <text x="34" y="48" fill="#fff5f5" font-size="30" font-family="Microsoft YaHei">装托三维示意（Demo）</text>
+  <rect x="70" y="265" width="760" height="100" rx="10" fill="#ad6800"/>
+  <rect x="95" y="145" width="120" height="120" fill="#ffe8cc"/>
+  <rect x="220" y="145" width="120" height="120" fill="#ffd8a8"/>
+  <rect x="345" y="145" width="120" height="120" fill="#ffc078"/>
+  <rect x="470" y="145" width="120" height="120" fill="#ffa94d"/>
+  <rect x="595" y="145" width="120" height="120" fill="#ff922b"/>
+  <rect x="120" y="65" width="120" height="80" fill="#ffd8a8"/>
+  <rect x="250" y="65" width="120" height="80" fill="#ffc078"/>
+  <rect x="380" y="65" width="120" height="80" fill="#ffa94d"/>
+  <rect x="510" y="65" width="120" height="80" fill="#ff922b"/>
+  <text x="82" y="392" fill="#fff4e6" font-size="18" font-family="Microsoft YaHei">托盘规格: 116*116*103cm（可用空间: 108*108*90cm）</text>
+</svg>

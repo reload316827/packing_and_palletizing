@@ -1,0 +1,15 @@
+﻿<svg width="900" height="420" viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="420" fill="#0b1320" rx="20"/>
+  <text x="34" y="48" fill="#e7f5ff" font-size="30" font-family="Microsoft YaHei">流程总览（Demo）</text>
+  <rect x="60" y="110" width="180" height="180" rx="14" fill="#364fc7"/>
+  <rect x="280" y="110" width="180" height="180" rx="14" fill="#1864ab"/>
+  <rect x="500" y="110" width="180" height="180" rx="14" fill="#0b7285"/>
+  <rect x="720" y="110" width="120" height="180" rx="14" fill="#2b8a3e"/>
+  <text x="86" y="210" fill="#edf2ff" font-size="24" font-family="Microsoft YaHei">订单导入</text>
+  <text x="297" y="210" fill="#e7f5ff" font-size="24" font-family="Microsoft YaHei">装箱计算</text>
+  <text x="518" y="210" fill="#e3fafc" font-size="24" font-family="Microsoft YaHei">装托计算</text>
+  <text x="737" y="210" fill="#ebfbee" font-size="24" font-family="Microsoft YaHei">导出</text>
+  <line x1="240" y1="200" x2="280" y2="200" stroke="#91a7ff" stroke-width="6"/>
+  <line x1="460" y1="200" x2="500" y2="200" stroke="#74c0fc" stroke-width="6"/>
+  <line x1="680" y1="200" x2="720" y2="200" stroke="#66d9e8" stroke-width="6"/>
+</svg>

@@ -1,0 +1,77 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务列表 - Demo</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1>Packing Studio</h1>
+          <p>多页面 Demo</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <a class="active" href="./list.html">列表页</a>
+        <a href="./detail.html">详情页</a>
+        <a href="./rules.html">规则页</a>
+              <a href="./overview.html">???</a>\n      </nav>
+      <div class="sidebar-foot">支持假数据切换与筛选交互</div>
+    </aside>
+
+    <main class="main">
+      <section class="card top">
+        <div>
+          <h2>装箱装托任务列表</h2>
+          <p id="datasetName">-</p>
+        </div>
+        <div class="toolbar" id="datasetSwitch"></div>
+      </section>
+
+      <section class="card">
+        <div class="row" style="margin-bottom:10px;">
+          <input id="keywordInput" placeholder="按任务号/订单号搜索" />
+          <select id="customerFilter"></select>
+          <select id="statusFilter">
+            <option value="">全部状态</option>
+            <option value="草稿">草稿</option>
+            <option value="待确认">待确认</option>
+            <option value="已确认">已确认</option>
+          </select>
+          <button class="ghost" id="resetFilters">重置筛选</button>
+        </div>
+        <div class="kpis" id="listKpis"></div>
+      </section>
+
+      <section class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>任务单号</th>
+              <th>客户</th>
+              <th>发货时间</th>
+              <th>装箱要求</th>
+              <th>订单组合</th>
+              <th>状态</th>
+              <th>外箱/托盘</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="planTable"></tbody>
+        </table>
+        <div id="planEmpty" class="empty" style="display:none; margin-top:12px;">没有匹配数据</div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">Demo 交互：仅前端假数据</div>
+  <script src="./shared-data.js"></script>
+  <script src="./list.js"></script>
+</body>
+</html>
+

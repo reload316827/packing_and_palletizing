@@ -1,0 +1,158 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>装箱装托系统 汇总页 Demo</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1>Packing Studio</h1>
+          <p>汇总单页 Demo</p>
+        </div>
+      </div>
+      <nav class="menu">
+        <button class="menu-item active">任务总览</button>
+        <button class="menu-item">客户模块</button>
+        <button class="menu-item">装箱装托单</button>
+        <button class="menu-item">型号-内盒</button>
+        <button class="menu-item">内盒-外箱</button>
+        <button class="menu-item">三维展示</button>
+      </nav>
+      <div class="sidebar-footer">
+        <p>当前模式：静态演示</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar card">
+        <div>
+          <h2>装箱装托方案生成 Demo（汇总页）</h2>
+          <p>客户：6002美国BBB ｜ 发货日期：2026-03-24 ｜ 任务单号：PLN-20260324-001</p>
+        </div>
+        <div class="toolbar">
+          <button data-demo-btn>导入订单 Excel</button>
+          <button data-demo-btn>生成 3 套方案</button>
+          <button data-demo-btn>上传最终 Excel</button>
+          <button class="primary" data-demo-btn>导出装箱装托单</button>
+        </div>
+      </header>
+
+      <section class="kpi-grid" id="kpiGrid"></section>
+
+      <section class="panel-grid two-col">
+        <article class="card panel">
+          <div class="panel-head">
+            <h3>客户模块（基础信息）</h3>
+            <button data-demo-btn>编辑客户配置</button>
+          </div>
+          <div class="kv-grid" id="customerKv"></div>
+          <div class="inline-actions">
+            <button data-demo-btn>新增内盒替换规则</button>
+            <button data-demo-btn>查看历史配置</button>
+          </div>
+        </article>
+
+        <article class="card panel">
+          <div class="panel-head">
+            <h3>客户装托/装箱单模块</h3>
+            <button data-demo-btn>创建新任务</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>发货计划</th>
+                <th>装箱要求</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="planTableBody"></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="card panel">
+        <div class="panel-head">
+          <h3>候选方案（系统生成 3 套）</h3>
+          <button data-demo-btn>一键对比</button>
+        </div>
+        <div class="solution-grid" id="solutionGrid"></div>
+      </section>
+
+      <section class="panel-grid two-col">
+        <article class="card panel">
+          <div class="panel-head">
+            <h3>型号-内盒映射（示例）</h3>
+            <button data-demo-btn>导入规则</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>型号</th>
+                <th>默认内盒</th>
+                <th>单重(kg)</th>
+                <th>默认每箱</th>
+              </tr>
+            </thead>
+            <tbody id="modelBoxBody"></tbody>
+          </table>
+        </article>
+
+        <article class="card panel">
+          <div class="panel-head">
+            <h3>内盒-外箱映射（示例）</h3>
+            <button data-demo-btn>维护映射</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>内盒编号</th>
+                <th>外箱规格(cm)</th>
+                <th>一箱总数</th>
+                <th>默认托盘</th>
+              </tr>
+            </thead>
+            <tbody id="innerOuterBody"></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="card panel">
+        <div class="panel-head">
+          <h3>三维展示（可旋转/缩放/拖动）</h3>
+          <div class="inline-actions">
+            <button id="viewPackingBtn">装箱视图</button>
+            <button id="viewPalletBtn">装托视图</button>
+            <button data-demo-btn>导出截图</button>
+          </div>
+        </div>
+        <div class="viewer-wrap">
+          <div id="viewer3d" class="viewer3d"></div>
+          <aside class="legend-panel">
+            <h4>操作说明</h4>
+            <ul>
+              <li>左键拖动：旋转视角</li>
+              <li>滚轮：缩放</li>
+              <li>右键拖动：平移</li>
+              <li>双击空白：重置视角</li>
+            </ul>
+            <h4>假数据说明</h4>
+            <p id="sceneMeta">当前：装托视图（2 托盘 / 混合外箱规格，外箱标签显示内含型号集合）</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">Demo 模式：未接入实际处理逻辑</div>
+  <script src="./vendor/three.min.js"></script>
+  <script src="./vendor/OrbitControls.js"></script>
+  <script src="./script.js"></script>
+</body>
+</html>
