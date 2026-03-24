@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import json
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 
@@ -10,7 +13,7 @@ from jobs.plan_calculate import calculate_plan
 plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
 
-def _validate_plan_payload(payload):
+def _validate_plan_payload(payload: dict[str, Any]) -> None:
     if not isinstance(payload, dict):
         raise AppError("INVALID_PAYLOAD", "请求体必须为 JSON 对象")
     if not str(payload.get("customer_code", "")).strip():
@@ -22,7 +25,7 @@ def _validate_plan_payload(payload):
         raise AppError("INVALID_MERGE_MODE", "merge_mode 仅支持 合并 / 不合并")
 
 
-def _row_to_dict(row):
+def _row_to_dict(row) -> dict[str, Any]:
     return dict(row) if row is not None else {}
 
 
@@ -79,7 +82,7 @@ def create_plan():
 
 
 @plans_bp.route("/<int:plan_id>", methods=["GET"])
-def get_plan(plan_id):
+def get_plan(plan_id: int):
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         if not plan:
@@ -102,7 +105,7 @@ def get_plan(plan_id):
 
 
 @plans_bp.route("/<int:plan_id>/calculate", methods=["POST"])
-def run_plan_calculation(plan_id):
+def run_plan_calculation(plan_id: int):
     try:
         result = calculate_plan(plan_id)
     except AppError as err:

@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from openpyxl import load_workbook
 
 
-def load_pallet_rules(file_path):
+def load_pallet_rules(file_path: str | Path) -> list[dict[str, Any]]:
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"规则文件不存在: {path}")
@@ -17,11 +20,11 @@ def load_pallet_rules(file_path):
         return []
 
     headers = [str(v).strip() if v is not None else "" for v in rows[0]]
-    records = []
+    records: list[dict[str, Any]] = []
     for idx, row in enumerate(rows[1:], start=2):
         if not any(cell is not None and str(cell).strip() for cell in row):
             continue
-        record = {
+        record: dict[str, Any] = {
             headers[i] or f"col_{i+1}": row[i]
             for i in range(min(len(headers), len(row)))
         }

@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import json
+from typing import Any
 
 from core.db import get_conn
 from core.errors import AppError
 from core.time_utils import utc_now_iso
 
 
-def _build_candidate_solutions(order_count, line_count):
+def _build_candidate_solutions(order_count: int, line_count: int) -> list[dict[str, Any]]:
     safe_order_count = max(1, order_count)
     safe_line_count = max(1, line_count)
 
@@ -43,7 +46,7 @@ def _build_candidate_solutions(order_count, line_count):
     ]
 
 
-def calculate_plan(plan_id):
+def calculate_plan(plan_id: int) -> dict[str, Any]:
     now = utc_now_iso()
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()

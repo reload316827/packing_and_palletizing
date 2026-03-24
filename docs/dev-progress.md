@@ -52,3 +52,14 @@ GET http://127.0.0.1:8010/healthz
 1. 完成规则导入入库与快照版本机制。
 2. 实现 `engine/packing_solver.py` 的三层装箱优先级。
 3. 接入任务计算链路中的真实规则与订单输入。
+
+## 2026-03-24（第1批补充：运行兼容修复）
+
+### 已完成
+1. 修复旧版 Flask 兼容问题：统一改为 `@route(methods=[...])` 写法。
+2. 修复 Python3.6 的 SQLite 连接参数类型问题：`Path -> str(Path)`。
+3. 移除不兼容 `from __future__ import annotations` 与新式类型注解写法。
+
+### 验证结果
+1. `python -m py_compile ...`：通过。
+2. `python -m unittest tests/test_plan_api.py`：通过（1个测试）。

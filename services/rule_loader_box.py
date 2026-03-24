@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from openpyxl import load_workbook
 
 
-def load_box_rules(file_path):
+def load_box_rules(file_path: str | Path) -> list[dict[str, Any]]:
     """
     解析型号-内盒规则（优先支持 xlsx）。
     .xls 需要 xlrd 依赖，当前版本先给出明确错误，避免静默失败。
@@ -21,7 +24,7 @@ def load_box_rules(file_path):
         raise RuntimeError(f"不支持的文件类型: {suffix}")
 
     workbook = load_workbook(path, data_only=True)
-    all_rules = []
+    all_rules: list[dict[str, Any]] = []
     for sheet_name in workbook.sheetnames:
         sheet = workbook[sheet_name]
         rows = list(sheet.iter_rows(values_only=True))

@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from openpyxl import load_workbook
 
 
-def load_import_template(file_path):
+def load_import_template(file_path: str | Path) -> dict[str, Any]:
     """
     导入模板解析占位实现。
     后续将补充：

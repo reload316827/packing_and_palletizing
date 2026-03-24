@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 
-def export_by_template(template_path, output_path):
+def export_by_template(*, template_path: str | Path, output_path: str | Path) -> Path:
     """
     导出占位实现。
     当前仅复制模板，后续在 W7 实现字段替换、明细填充、单元格合并。
