@@ -3,7 +3,8 @@
 ## 1. 导入模板字段（业务输入）
 | 字段 | 说明 | 类型 | 必填 | 示例 |
 | --- | --- | --- | --- | --- |
-| customer_code | 客户编号 | string | 是 | CUST-6002 |
+| shipment_unit_code | 单位代号（整票/整单位级） | string | 是 | UNIT-6002-BBB |
+| customer_code | 客户编号（型号级客户编号，随型号行变化） | string | 是 | CUST-6002-M01 |
 | order_no | 订单编号 | string | 是 | 405398+405228+420867 |
 | model | ZNP型号 | string | 是 | 54-1801 |
 | category | 产品类别 | string | 是 | 配件 |
@@ -14,6 +15,10 @@
 | ship_date | 交货日期 | string(date) | 是 | 2026-03-24 |
 | merge_mode | 合并方式 | enum | 是 | 合并/不合并 |
 | need_pallet | 是否打托 | bool/enum | 是 | 是/否 |
+
+### 1.1 编号口径说明（必须区分）
+1. `shipment_unit_code`：对应“单位信息”区域，只表示整票/整单位的代号，不随明细型号变化。
+2. `customer_code`：对应“型号行”的客户编号，属于明细级字段，可能在不同型号行中不同。
 
 ## 2. 规则字段（装箱.xls）
 | 字段 | 说明 |
