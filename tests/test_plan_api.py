@@ -5,10 +5,12 @@ from backend_server import create_app
 
 class PlanApiTestCase(unittest.TestCase):
     def setUp(self):
+        # 每个用例独立初始化应用与测试客户端
         self.app = create_app()
         self.client = self.app.test_client()
 
     def test_create_and_calculate_plan(self):
+        # 覆盖“创建任务 -> 计算 -> 查询结果”主链路
         payload = {
             "customer_code": "CUST-6002",
             "ship_date": "2026-03-24",
