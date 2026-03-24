@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import json
-from typing import Any
 
 from flask import Blueprint, jsonify, request
 
@@ -13,23 +10,23 @@ from jobs.plan_calculate import calculate_plan
 plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
 
-def _validate_plan_payload(payload: dict[str, Any]) -> None:
+def _validate_plan_payload(payload):
     if not isinstance(payload, dict):
-        raise AppError("INVALID_PAYLOAD", "请求体必须为 JSON 对象")
+        raise AppError("INVALID_PAYLOAD", "payload must be a JSON object")
     if not str(payload.get("customer_code", "")).strip():
-        raise AppError("MISSING_CUSTOMER_CODE", "customer_code 不能为空")
+        raise AppError("MISSING_CUSTOMER_CODE", "customer_code is required")
     if not str(payload.get("ship_date", "")).strip():
-        raise AppError("MISSING_SHIP_DATE", "ship_date 不能为空，格式示例 2026-03-24")
-    merge_mode = str(payload.get("merge_mode", "不合并")).strip()
-    if merge_mode not in {"合并", "不合并"}:
-        raise AppError("INVALID_MERGE_MODE", "merge_mode 仅支持 合并 / 不合并")
+        raise AppError("MISSING_SHIP_DATE", "ship_date is required, e.g. 2026-03-24")
+    merge_mode = str(payload.get("merge_mode", "NO_MERGE")).strip()
+    if merge_mode not in {"MERGE", "NO_MERGE", "合并", "不合并"}:
+        raise AppError("INVALID_MERGE_MODE", "merge_mode must be MERGE or NO_MERGE")
 
 
-def _row_to_dict(row) -> dict[str, Any]:
+def _row_to_dict(row):
     return dict(row) if row is not None else {}
 
 
-def _error_response(err: AppError):
+def _error_response(err):
     return jsonify(err.to_dict()), err.http_status
 
 
@@ -43,7 +40,7 @@ def create_plan():
 
     orders = payload.get("orders") or []
     if not isinstance(orders, list):
-        return _error_response(AppError("INVALID_ORDERS", "orders 必须是数组"))
+        return _error_response(AppError("INVALID_ORDERS", "orders must be an array"))
 
     created_at = utc_now_iso()
     with get_conn() as conn:
@@ -56,8 +53,8 @@ def create_plan():
             (
                 payload["customer_code"].strip(),
                 payload["ship_date"].strip(),
-                payload.get("merge_mode", "不合并"),
-                "草稿",
+                payload.get("merge_mode", "NO_MERGE"),
+                "DRAFT",
                 json.dumps(payload, ensure_ascii=False),
                 created_at,
                 created_at,
@@ -66,7 +63,7 @@ def create_plan():
         plan_id = cursor.lastrowid
 
         for idx, order in enumerate(orders):
-            order_no = str((order or {}).get("order_no", "")).strip() or f"ORDER-{idx + 1:03d}"
+            order_no = str((order or {}).get("order_no", "")).strip() or "ORDER-{0:03d}".format(idx + 1)
             conn.execute(
                 """
                 INSERT INTO shipment_plan_order
@@ -82,11 +79,11 @@ def create_plan():
 
 
 @plans_bp.route("/<int:plan_id>", methods=["GET"])
-def get_plan(plan_id: int):
+def get_plan(plan_id):
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         if not plan:
-            return _error_response(AppError("PLAN_NOT_FOUND", f"任务不存在: {plan_id}", 404))
+            return _error_response(AppError("PLAN_NOT_FOUND", "plan not found: {0}".format(plan_id), 404))
 
         orders = conn.execute(
             "SELECT * FROM shipment_plan_order WHERE plan_id = ? ORDER BY id ASC", (plan_id,)
@@ -105,7 +102,7 @@ def get_plan(plan_id: int):
 
 
 @plans_bp.route("/<int:plan_id>/calculate", methods=["POST"])
-def run_plan_calculation(plan_id: int):
+def run_plan_calculation(plan_id):
     try:
         result = calculate_plan(plan_id)
     except AppError as err:

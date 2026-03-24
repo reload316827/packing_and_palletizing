@@ -1,65 +1,31 @@
-# 开发进展记录
+﻿# 开发记录（2026-03-24）
 
-## 2026-03-24（第1批：后端基础骨架）
-
-### 已完成
-1. 建立后端目录骨架：`api/`、`core/`、`jobs/`、`services/`、`engine/`、`migrations/`、`tests/`。
-2. 建立数据库初始化与首个迁移脚本：
-- `core/db.py`
-- `migrations/001_init.sql`
-3. 建立任务 API 初版：
-- `POST /api/plans`（创建任务）
-- `GET /api/plans/{id}`（查询任务详情）
-- `POST /api/plans/{id}/calculate`（触发计算）
-4. 建立计算任务占位实现（返回 3 套候选方案）：
-- `jobs/plan_calculate.py`
-5. 建立规则加载骨架：
+## 本次完成内容
+1. 建立后端基础目录与骨架：`core/`、`api/`、`jobs/`、`services/`、`engine/`、`migrations/`、`tests/`。
+2. 新增数据库初始化脚本：`migrations/001_init.sql`。
+3. 新增任务 API：创建任务、查询任务、触发计算（候选方案占位生成）。
+4. 新增规则解析器骨架：
 - `services/rule_loader_box.py`
 - `services/rule_loader_pallet.py`
-6. 建立导入/导出占位服务：
+5. 新增导入/导出占位服务：
 - `services/import_loader.py`
 - `services/exporter.py`
-7. 建立引擎占位模块：
-- `engine/packing_solver.py`
-- `engine/pallet_solver.py`
-8. 补齐第1周文档交付：
+6. 新增周计划落地文档：
 - `docs/field-dictionary.md`
 - `docs/rule-mapping.md`
 - `docs/api-draft.md`
 - `docs/error-codes.md`
 
-### 验证结果
-1. `python -m py_compile ...`：通过。
-2. `python -m unittest tests/test_plan_api.py`：通过（1个测试）。
-3. 仓库清理：移除误提交的 `__pycache__/*.pyc`，新增 `.gitignore` 规则。
+## 环境与注解调整
+1. 按要求恢复并使用新式类型注解（`dict[str, Any]`、`str | Path`、`from __future__ import annotations`）。
+2. `.venv/pyvenv.cfg` 当前指向 Python 3.14 基础解释器配置。
 
-### 启动方式
-1. 启动服务：
-```bash
-python backend_server.py
-```
-2. 健康检查：
-```bash
-GET http://127.0.0.1:8010/healthz
-```
+## 当前阻塞
+1. `.venv\\Scripts\\python -V` 可返回 `Python 3.14.0`，但执行 `-m`（如 `py_compile`、`unittest`）失败。
+2. 报错：`ModuleNotFoundError: No module named 'encodings'`。
+3. 根因：当前 `.venv\\Lib` 中仅有 `site-packages`，缺少标准库（`encodings` 等），基础解释器路径不可用于加载 stdlib。
 
-### 已知限制
-1. `engine/*` 目前为占位实现，尚未实现正式装箱/装托算法。
-2. `.xls` 规则文件解析尚未接入 `xlrd`，当前会提示先转为 `.xlsx`。
-3. 导出服务 `services/exporter.py` 当前仅复制模板，未填充正式业务数据。
-
-### 下一步（第2批）
-1. 完成规则导入入库与快照版本机制。
-2. 实现 `engine/packing_solver.py` 的三层装箱优先级。
-3. 接入任务计算链路中的真实规则与订单输入。
-
-## 2026-03-24（第1批补充：运行兼容修复）
-
-### 已完成
-1. 修复旧版 Flask 兼容问题：统一改为 `@route(methods=[...])` 写法。
-2. 修复 Python3.6 的 SQLite 连接参数类型问题：`Path -> str(Path)`。
-3. 移除不兼容 `from __future__ import annotations` 与新式类型注解写法。
-
-### 验证结果
-1. `python -m py_compile ...`：通过。
-2. `python -m unittest tests/test_plan_api.py`：通过（1个测试）。
+## 下一步
+1. 修复/重建可用的 Python 3.14 运行时（保证 `python -m` 可用）。
+2. 完成 Week2 的规则入库与快照逻辑。
+3. 启动 Week3 的 `engine/packing_solver.py` 正式实现。

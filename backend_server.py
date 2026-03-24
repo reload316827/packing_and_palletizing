@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from flask import Flask, jsonify
 
 from api.plans import plans_bp
@@ -7,7 +5,7 @@ from core.db import init_db
 from core.errors import AppError
 
 
-def create_app() -> Flask:
+def create_app():
     app = Flask(__name__)
     init_db()
     app.register_blueprint(plans_bp)
@@ -17,7 +15,7 @@ def create_app() -> Flask:
         return jsonify({"status": "ok"})
 
     @app.errorhandler(AppError)
-    def handle_app_error(err: AppError):
+    def handle_app_error(err):
         return jsonify(err.to_dict()), err.http_status
 
     return app
