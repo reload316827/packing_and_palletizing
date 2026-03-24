@@ -11,6 +11,7 @@ plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
 
 def _validate_plan_payload(payload):
+    # 校验创建任务所需的关键字段
     if not isinstance(payload, dict):
         raise AppError("INVALID_PAYLOAD", "payload must be a JSON object")
     if not str(payload.get("customer_code", "")).strip():
@@ -23,6 +24,7 @@ def _validate_plan_payload(payload):
 
 
 def _row_to_dict(row):
+    # sqlite Row -> dict，便于 JSON 序列化
     return dict(row) if row is not None else {}
 
 
@@ -32,6 +34,7 @@ def _error_response(err):
 
 @plans_bp.route("", methods=["POST"])
 def create_plan():
+    # 创建装箱装托任务，并写入订单行快照
     payload = request.get_json(silent=True) or {}
     try:
         _validate_plan_payload(payload)
@@ -44,6 +47,7 @@ def create_plan():
 
     created_at = utc_now_iso()
     with get_conn() as conn:
+        # 写入任务主表
         cursor = conn.execute(
             """
             INSERT INTO shipment_plan
@@ -63,6 +67,7 @@ def create_plan():
         plan_id = cursor.lastrowid
 
         for idx, order in enumerate(orders):
+            # 写入任务关联订单明细
             order_no = str((order or {}).get("order_no", "")).strip() or "ORDER-{0:03d}".format(idx + 1)
             conn.execute(
                 """
@@ -80,6 +85,7 @@ def create_plan():
 
 @plans_bp.route("/<int:plan_id>", methods=["GET"])
 def get_plan(plan_id):
+    # 查询任务主数据、订单与候选方案
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         if not plan:
@@ -103,6 +109,7 @@ def get_plan(plan_id):
 
 @plans_bp.route("/<int:plan_id>/calculate", methods=["POST"])
 def run_plan_calculation(plan_id):
+    # 触发任务计算（当前为同步占位实现）
     try:
         result = calculate_plan(plan_id)
     except AppError as err:

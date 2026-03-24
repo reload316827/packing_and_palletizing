@@ -6,6 +6,7 @@ from core.time_utils import utc_now_iso
 
 
 def _build_candidate_solutions(order_count, line_count):
+    # 基于订单规模生成 3 套候选方案（占位策略）
     safe_order_count = max(1, order_count)
     safe_line_count = max(1, line_count)
 
@@ -44,6 +45,7 @@ def _build_candidate_solutions(order_count, line_count):
 
 
 def calculate_plan(plan_id):
+    # 任务计算入口：更新状态、生成方案、回写结果
     now = utc_now_iso()
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
@@ -62,6 +64,7 @@ def calculate_plan(plan_id):
 
         line_count = 0
         for row in orders:
+            # 统计订单量，作为占位计算输入
             payload = json.loads(row["line_payload"] or "{}")
             qty = payload.get("qty") or payload.get("quantity") or 1
             try:
@@ -70,6 +73,7 @@ def calculate_plan(plan_id):
                 line_count += 1
 
         candidates = _build_candidate_solutions(order_count=len(orders), line_count=line_count)
+        # 覆盖写入最新候选方案
         conn.execute("DELETE FROM solution WHERE plan_id = ?", (plan_id,))
         for candidate in candidates:
             conn.execute(
