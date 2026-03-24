@@ -4,6 +4,7 @@ from openpyxl import load_workbook
 
 
 def load_box_rules(file_path):
+    # 读取“型号-内盒”规则（当前仅支持 .xlsx）
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError("rule file not found: {0}".format(path))
@@ -17,6 +18,7 @@ def load_box_rules(file_path):
     workbook = load_workbook(path, data_only=True)
     all_rules = []
     for sheet_name in workbook.sheetnames:
+        # 按 sheet 汇总规则，并记录来源行号
         sheet = workbook[sheet_name]
         rows = list(sheet.iter_rows(values_only=True))
         if not rows:

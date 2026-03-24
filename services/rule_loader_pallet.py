@@ -4,6 +4,7 @@ from openpyxl import load_workbook
 
 
 def load_pallet_rules(file_path):
+    # 读取“内盒-外箱-托盘”规则（首个 sheet）
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError("rule file not found: {0}".format(path))
@@ -19,6 +20,7 @@ def load_pallet_rules(file_path):
     headers = [str(v).strip() if v is not None else "" for v in rows[0]]
     records = []
     for idx, row in enumerate(rows[1:], start=2):
+        # 跳过空行，仅保留有效规则记录
         if not any(cell is not None and str(cell).strip() for cell in row):
             continue
         record = {
