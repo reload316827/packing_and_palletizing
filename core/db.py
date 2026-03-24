@@ -4,7 +4,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "output" / "packing.db"
-MIGRATION_PATH = PROJECT_ROOT / "migrations" / "001_init.sql"
+MIGRATION_DIR = PROJECT_ROOT / "migrations"
 
 
 def _ensure_parent_dir():
@@ -26,9 +26,15 @@ def get_conn():
 
 
 def init_db():
-    # 启动时执行基础迁移脚本，确保表结构就绪
-    if not MIGRATION_PATH.exists():
-        raise FileNotFoundError("missing migration file: {0}".format(MIGRATION_PATH))
-    sql = MIGRATION_PATH.read_text(encoding="utf-8")
+    # 启动时按序执行全部迁移脚本（001, 002, ...）
+    if not MIGRATION_DIR.exists():
+        raise FileNotFoundError("missing migration directory: {0}".format(MIGRATION_DIR))
+
+    migration_files = sorted(MIGRATION_DIR.glob("*.sql"))
+    if not migration_files:
+        raise FileNotFoundError("no migration file found in: {0}".format(MIGRATION_DIR))
+
     with get_conn() as conn:
-        conn.executescript(sql)
+        for migration_file in migration_files:
+            sql = migration_file.read_text(encoding="utf-8")
+            conn.executescript(sql)

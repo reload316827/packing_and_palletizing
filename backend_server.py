@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 
 from api.plans import plans_bp
+from api.rules import rules_bp
 from core.db import init_db
 from core.errors import AppError
 
@@ -11,6 +12,7 @@ def create_app():
     # 启动时确保数据库结构可用
     init_db()
     app.register_blueprint(plans_bp)
+    app.register_blueprint(rules_bp)
 
     @app.route("/healthz", methods=["GET"])
     def healthz():

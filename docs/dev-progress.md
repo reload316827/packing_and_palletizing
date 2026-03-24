@@ -60,6 +60,26 @@
 1. 按要求为后端核心代码补充中文注释（模块入口、关键函数、核心逻辑段）。
 2. 明确后续开发默认使用中文注释（必要处可补英文术语以避免歧义）。
 
+## 2026-03-24（批次6：第二周开发-规则快照链路）
+
+### 已完成
+1. 新增迁移脚本 `migrations/002_rule_snapshots.sql`，落地规则快照与规则明细表。
+2. `core/db.py` 升级为按序执行全部迁移脚本（`001`, `002`, ...）。
+3. 新增规则快照服务 `services/rule_snapshot_service.py`：
+- 导入 box 规则并写入快照
+- 导入 pallet 规则并写入快照
+- 查询快照详情与预览
+4. 新增规则 API `api/rules.py`：
+- `POST /api/rules/box/import`
+- `POST /api/rules/pallet/import`
+- `GET /api/rules/snapshots/{id}`
+5. `backend_server.py` 注册 `rules` 蓝图。
+6. 新增自动化测试 `tests/test_rules_api.py`，验证导入与快照查询闭环。
+
+### 验证结果
+1. `python -m py_compile ...`（含新增模块）：通过。
+2. `python -m unittest tests/test_plan_api.py tests/test_rules_api.py`：通过（3个测试）。
+
 ### 2026-03-24（批次3：中文注释规范）
 1. 已为后端骨架核心文件补充中文注释，覆盖 API、数据库、任务计算、规则导入、导入导出、引擎占位与测试主链路。
 2. 新增约定：后续新增或改动代码，统一使用中文注释说明关键逻辑与约束。
