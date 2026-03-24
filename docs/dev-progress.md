@@ -31,6 +31,7 @@
 ### 验证结果
 1. `python -m py_compile ...`：通过。
 2. `python -m unittest tests/test_plan_api.py`：通过（1个测试）。
+3. 仓库清理：移除误提交的 `__pycache__/*.pyc`，新增 `.gitignore` 规则。
 
 ### 启动方式
 1. 启动服务：
