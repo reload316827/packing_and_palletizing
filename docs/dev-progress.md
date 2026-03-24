@@ -1,6 +1,6 @@
 ﻿# 开发进展记录
 
-## 2026-03-24（批次1：后端基础骨架 + 兼容修复）
+## 2026-03-24（批次1：后端基础骨架）
 
 ### 已完成
 1. 建立后端骨架目录：`api/`、`core/`、`jobs/`、`services/`、`engine/`、`migrations/`、`tests/`。
@@ -26,18 +26,23 @@
 - `docs/api-draft.md`
 - `docs/error-codes.md`
 
-### 兼容与稳定性修复
-1. 清理 `__pycache__/*.pyc` 并新增 `.gitignore` 规则，避免缓存文件入库。
-2. 修复 Flask 旧版本兼容：统一使用 `@route(methods=[...])`。
-3. 修复 SQLite 路径兼容：`sqlite3.connect(str(DB_PATH))`。
-4. 将核心文件改为 Python3.6 可运行语法。
-5. 对关键文件改为 ASCII 安全文案，避免本机编码差异导致语法错误。
+### 2026-03-24（批次2：3.14与类型注解调整）
+1. 按要求恢复新式类型注解风格：
+- `dict[str, Any]`
+- `list[dict[str, Any]]`
+- `str | Path`
+- `from __future__ import annotations`
+2. `.venv/pyvenv.cfg` 维持 Python 3.14 配置。
+3. 修复因编码污染导致的服务文件异常，重写核心后端文件为干净 UTF-8。
 
-### 验证结果
-1. `python -m py_compile backend_server.py api/plans.py core/db.py core/errors.py core/time_utils.py jobs/plan_calculate.py services/rule_loader_box.py services/rule_loader_pallet.py services/import_loader.py services/exporter.py engine/packing_solver.py engine/pallet_solver.py tests/test_plan_api.py`：通过。
-2. `python -m unittest tests/test_plan_api.py`：通过（1个测试）。
+### 当前阻塞
+1. `.venv\\Scripts\\python -V` 可返回 `Python 3.14.0`。
+2. 但 `.venv\\Scripts\\python -m ...` 无法运行，报错：
+- `ModuleNotFoundError: No module named 'encodings'`
+3. 根因：当前 `.venv\\Lib` 仅有 `site-packages`，缺少标准库目录（`encodings` 等）。
+4. 尝试通过 `uv` 重建 3.14 运行时失败，受网络策略限制（下载 GitHub 资源被阻止）。
 
-### 下一步（批次2）
-1. 实现规则入库与规则快照版本机制。
-2. 接入导入模板解析到任务创建流程。
-3. 开始实现 `engine/packing_solver.py` 的三层优先级装箱逻辑。
+### 下一步（批次3）
+1. 在可联网环境重建可用 3.14 解释器并重建 `.venv`。
+2. 完成 Week2：规则入库与规则快照版本机制。
+3. 完成 Week3：装箱求解器第一版（同型号->同内盒->兼容升级）。
