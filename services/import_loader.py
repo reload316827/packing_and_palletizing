@@ -4,6 +4,7 @@ from openpyxl import load_workbook
 
 
 def load_import_template(file_path):
+    # 导入模板占位解析：当前返回基础预览信息
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError("import file not found: {0}".format(path))
