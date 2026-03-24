@@ -365,3 +365,23 @@ def get_active_snapshot(snapshot_type, at_time=None):
         "active_snapshot": dict(snapshot) if snapshot else None,
         "activation": dict(activation),
     }
+
+
+def get_active_box_rules(at_time=None):
+    # 读取指定时间点生效的 box 规则明细
+    active = get_active_snapshot("box", at_time)
+    snapshot = active.get("active_snapshot")
+    if not snapshot:
+        return []
+
+    snapshot_id = snapshot["id"]
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT model_code, inner_box_spec, qty_per_carton, gross_weight_kg
+            FROM rule_model_inner_box
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]

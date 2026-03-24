@@ -101,6 +101,24 @@
 1. `python -m py_compile ...`：通过。
 2. `python -m unittest tests/test_plan_api.py tests/test_rules_api.py`：通过（4个测试）。
 
+## 2026-03-24（批次8：第三周开发-装箱求解器第一版）
+
+### 已完成
+1. 实现 `engine/packing_solver.py` 第一版：
+- 同型号整箱优先
+- 同内盒余量拼箱
+- 缺规则型号使用兼容内盒 105 兜底
+2. `jobs/plan_calculate.py` 接入装箱求解器：
+- 从任务订单快照提取 `model/qty`
+- 读取当前生效 box 规则
+- 基于装箱结果生成 3 套候选方案
+3. `services/rule_snapshot_service.py` 增加 `get_active_box_rules`，供计算阶段取生效规则。
+4. 新增单测 `tests/test_packing_solver.py`，覆盖优先级与兜底逻辑。
+
+### 验证结果
+1. `python -m py_compile ...`：通过。
+2. `python -m unittest tests/test_plan_api.py tests/test_rules_api.py tests/test_packing_solver.py`：通过。
+
 ### 2026-03-24（批次3：中文注释规范）
 1. 已为后端骨架核心文件补充中文注释，覆盖 API、数据库、任务计算、规则导入、导入导出、引擎占位与测试主链路。
 2. 新增约定：后续新增或改动代码，统一使用中文注释说明关键逻辑与约束。
