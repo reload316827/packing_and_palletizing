@@ -80,6 +80,27 @@
 1. `python -m py_compile ...`（含新增模块）：通过。
 2. `python -m unittest tests/test_plan_api.py tests/test_rules_api.py`：通过（3个测试）。
 
+## 2026-03-24（批次7：第二周开发-冲突检测与版本选择）
+
+### 已完成
+1. 新增迁移脚本 `migrations/003_rule_versioning.sql`：
+- `rule_snapshot_conflict`（规则冲突表）
+- `rule_snapshot_activation`（规则版本激活表）
+2. `services/rule_snapshot_service.py` 增强：
+- 导入后自动检测冲突并落库
+- 支持查询冲突列表
+- 支持激活快照版本（含生效时间）
+- 支持按时间点查询生效版本
+3. `api/rules.py` 增加接口：
+- `GET /api/rules/snapshots/{id}/conflicts`
+- `POST /api/rules/snapshots/{id}/activate`
+- `GET /api/rules/active?snapshot_type=box|pallet&at=...`
+4. `tests/test_rules_api.py` 新增冲突检测与版本激活用例。
+
+### 验证结果
+1. `python -m py_compile ...`：通过。
+2. `python -m unittest tests/test_plan_api.py tests/test_rules_api.py`：通过（4个测试）。
+
 ### 2026-03-24（批次3：中文注释规范）
 1. 已为后端骨架核心文件补充中文注释，覆盖 API、数据库、任务计算、规则导入、导入导出、引擎占位与测试主链路。
 2. 新增约定：后续新增或改动代码，统一使用中文注释说明关键逻辑与约束。
