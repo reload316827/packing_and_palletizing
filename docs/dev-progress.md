@@ -122,3 +122,23 @@
 ### 2026-03-24（批次3：中文注释规范）
 1. 已为后端骨架核心文件补充中文注释，覆盖 API、数据库、任务计算、规则导入、导入导出、引擎占位与测试主链路。
 2. 新增约定：后续新增或改动代码，统一使用中文注释说明关键逻辑与约束。
+
+## 2026-03-24（批次9：第三周开发-装箱明细结构化落库）
+
+### 已完成
+1. 新增迁移脚本 `migrations/004_solution_item_box.sql`，落地装箱结构化明细表 `solution_item_box`。
+2. 重构 `engine/packing_solver.py`：
+- 保留同型号/同内盒/105兜底策略；
+- 输出中新增订单行追溯 `order_refs`；
+- 默认输出方向约束字段（`pose_mode=upright`、`side_place_qty=0`）。
+3. `jobs/plan_calculate.py` 接入规则版本元数据：
+- 读取生效 box 规则快照（`snapshot_id/version`）；
+- 写入 `solution_item_box` 明细，支持追溯到 `order_line_id/order_no` 与规则版本。
+4. `api/plans.py` 的任务详情接口新增 `solution_item_boxes` 返回。
+5. 补充单测：
+- `tests/test_packing_solver.py` 新增“订单追溯信息保留”用例；
+- `tests/test_plan_api.py` 增加装箱明细返回断言。
+6. 更新 `docs/dev-plan.md`：标记 `W3-01/W3-03/W3-04` 为 `OK`。
+
+### 验证结果
+1. `python -m unittest discover -s tests -p "test_*.py"`：通过（7个测试）。

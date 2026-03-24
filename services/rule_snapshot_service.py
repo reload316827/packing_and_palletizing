@@ -368,11 +368,16 @@ def get_active_snapshot(snapshot_type, at_time=None):
 
 
 def get_active_box_rules(at_time=None):
-    # 读取指定时间点生效的 box 规则明细
+    # 兼容旧调用：仅返回规则行列表。
+    return get_active_box_rule_bundle(at_time)["rules"]
+
+
+def get_active_box_rule_bundle(at_time=None):
+    # 读取指定时间点生效的 box 规则及版本信息，供计算链路追溯。
     active = get_active_snapshot("box", at_time)
     snapshot = active.get("active_snapshot")
     if not snapshot:
-        return []
+        return {"snapshot_id": None, "version": None, "rules": []}
 
     snapshot_id = snapshot["id"]
     with get_conn() as conn:
@@ -384,4 +389,9 @@ def get_active_box_rules(at_time=None):
             """,
             (snapshot_id,),
         ).fetchall()
-    return [dict(row) for row in rows]
+
+    return {
+        "snapshot_id": snapshot_id,
+        "version": snapshot.get("version"),
+        "rules": [dict(row) for row in rows],
+    }

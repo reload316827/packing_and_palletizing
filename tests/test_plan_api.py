@@ -30,7 +30,11 @@ class PlanApiTestCase(unittest.TestCase):
 
         detail = self.client.get("/api/plans/{0}".format(plan_id))
         self.assertEqual(detail.status_code, 200)
-        self.assertEqual(len(detail.get_json()["solutions"]), 3)
+        body = detail.get_json()
+        self.assertEqual(len(body["solutions"]), 3)
+        self.assertGreater(len(body["solution_item_boxes"]), 0)
+        self.assertIn("order_line_id", body["solution_item_boxes"][0])
+        self.assertIn("rule_snapshot_id", body["solution_item_boxes"][0])
 
 
 if __name__ == "__main__":

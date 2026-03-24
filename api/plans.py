@@ -1,5 +1,4 @@
 import json
-
 from flask import Blueprint, jsonify, request
 
 from core.db import get_conn
@@ -11,7 +10,7 @@ plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
 
 def _validate_plan_payload(payload):
-    # 校验创建任务所需的关键字段
+    # 校验创建任务的关键字段。
     if not isinstance(payload, dict):
         raise AppError("INVALID_PAYLOAD", "payload must be a JSON object")
     if not str(payload.get("customer_code", "")).strip():
@@ -24,7 +23,7 @@ def _validate_plan_payload(payload):
 
 
 def _row_to_dict(row):
-    # sqlite Row -> dict，便于 JSON 序列化
+    # sqlite Row -> dict，便于 JSON 序列化。
     return dict(row) if row is not None else {}
 
 
@@ -34,7 +33,7 @@ def _error_response(err):
 
 @plans_bp.route("", methods=["POST"])
 def create_plan():
-    # 创建装箱装托任务，并写入订单行快照
+    # 创建任务并写入订单行快照。
     payload = request.get_json(silent=True) or {}
     try:
         _validate_plan_payload(payload)
@@ -47,7 +46,6 @@ def create_plan():
 
     created_at = utc_now_iso()
     with get_conn() as conn:
-        # 写入任务主表
         cursor = conn.execute(
             """
             INSERT INTO shipment_plan
@@ -67,7 +65,6 @@ def create_plan():
         plan_id = cursor.lastrowid
 
         for idx, order in enumerate(orders):
-            # 写入任务关联订单明细
             order_no = str((order or {}).get("order_no", "")).strip() or "ORDER-{0:03d}".format(idx + 1)
             conn.execute(
                 """
@@ -85,17 +82,28 @@ def create_plan():
 
 @plans_bp.route("/<int:plan_id>", methods=["GET"])
 def get_plan(plan_id):
-    # 查询任务主数据、订单与候选方案
+    # 查询任务主数据、订单、候选方案及装箱明细。
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         if not plan:
             return _error_response(AppError("PLAN_NOT_FOUND", "plan not found: {0}".format(plan_id), 404))
 
         orders = conn.execute(
-            "SELECT * FROM shipment_plan_order WHERE plan_id = ? ORDER BY id ASC", (plan_id,)
+            "SELECT * FROM shipment_plan_order WHERE plan_id = ? ORDER BY id ASC",
+            (plan_id,),
         ).fetchall()
         solutions = conn.execute(
-            "SELECT * FROM solution WHERE plan_id = ? ORDER BY score_rank ASC", (plan_id,)
+            "SELECT * FROM solution WHERE plan_id = ? ORDER BY score_rank ASC",
+            (plan_id,),
+        ).fetchall()
+        solution_item_boxes = conn.execute(
+            """
+            SELECT *
+            FROM solution_item_box
+            WHERE plan_id = ?
+            ORDER BY solution_id ASC, carton_seq ASC, id ASC
+            """,
+            (plan_id,),
         ).fetchall()
 
     return jsonify(
@@ -103,13 +111,14 @@ def get_plan(plan_id):
             "plan": _row_to_dict(plan),
             "orders": [_row_to_dict(row) for row in orders],
             "solutions": [_row_to_dict(row) for row in solutions],
+            "solution_item_boxes": [_row_to_dict(row) for row in solution_item_boxes],
         }
     )
 
 
 @plans_bp.route("/<int:plan_id>/calculate", methods=["POST"])
 def run_plan_calculation(plan_id):
-    # 触发任务计算（当前为同步占位实现）
+    # 触发任务计算（当前为同步执行）。
     try:
         result = calculate_plan(plan_id)
     except AppError as err:
