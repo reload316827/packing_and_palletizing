@@ -59,6 +59,31 @@ class RulesApiTestCase(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         self.assertGreaterEqual(created.get_json()["record_count"], 1)
 
+    def test_import_box_rules_with_multipart_upload(self):
+        # 验证网页 multipart 上传导入
+        tmp_dir = tempfile.mkdtemp(prefix="rule_upload_")
+        file_path = os.path.join(tmp_dir, "box_rules_upload.xlsx")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "rules"
+        ws.append(["model", "inner_box_spec", "qty_per_carton", "gross_weight_kg"])
+        ws.append(["UP-001", "105", 20, 12.5])
+        wb.save(file_path)
+        wb.close()
+
+        with open(file_path, "rb") as fh:
+            created = self.client.post(
+                "/api/rules/box/import",
+                data={"file": (fh, "box_rules_upload.xlsx")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(created.status_code, 201)
+        body = created.get_json()
+        self.assertEqual(body["snapshot_type"], "box")
+        self.assertGreaterEqual(body["record_count"], 1)
+
     def test_conflict_detect_and_activate_version(self):
         # 构造冲突规则：同一型号对应不同内盒
         tmp_dir = tempfile.mkdtemp(prefix="rule_test_")

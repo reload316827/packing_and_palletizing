@@ -20,8 +20,9 @@
         <a href="./list.html">列表页</a>
         <a href="./detail.html">详情页</a>
         <a class="active" href="./rules.html">规则页</a>
-        <a href="./overview.html">汇总页</a>`r`n      </nav>
-      <div class="sidebar-foot">规则示例可筛选可切换</div>
+        <a href="./overview.html">汇总页</a>
+      </nav>
+      <div class="sidebar-foot">规则导入支持网页直接上传</div>
     </aside>
 
     <main class="main">
@@ -38,12 +39,13 @@
           <select id="moduleFilter">
             <option value="customerRules">客户规则</option>
             <option value="modelInner">型号-内盒</option>
-            <option value="innerOuter">内盒-外箱</option>
+            <option value="innerOuter">内盒-外箱-托盘</option>
           </select>
           <input id="keywordInput" placeholder="输入关键字筛选" />
           <button id="resetFilters" class="ghost">重置筛选</button>
           <button id="fakeAddBtn">新增规则</button>
           <button id="fakeImportBtn">导入规则</button>
+          <input id="ruleFileInput" type="file" accept=".xlsx,.xls" style="display:none;" />
         </div>
         <div class="kpis" id="ruleKpis"></div>
       </section>
@@ -60,10 +62,8 @@
     </main>
   </div>
 
-  <div class="toast" id="toast">Demo 交互：仅前端假数据</div>
+  <div class="toast" id="toast">消息</div>
   <script src="./shared-data.js"></script>
   <script src="./rules.js"></script>
 </body>
 </html>
-
-
