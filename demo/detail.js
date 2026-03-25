@@ -61,19 +61,19 @@
 
   function normalizeStatus(value) {
     const map = {
-      DRAFT: "??",
-      CALCULATING: "???",
-      PENDING_CONFIRM: "???",
-      CONFIRMED: "???",
-      CALCULATE_FAILED: "????"
+      DRAFT: "草稿",
+      CALCULATING: "计算中",
+      PENDING_CONFIRM: "待确认",
+      CONFIRMED: "已确认",
+      CALCULATE_FAILED: "计算失败"
     };
     return map[String(value || "")] || String(value || "-");
   }
 
   function normalizeMergeMode(value) {
     const text = String(value || "").trim();
-    if (text === "MERGE" || text === "??") return "??";
-    if (text === "NO_MERGE" || text === "???") return "???";
+    if (text === "MERGE" || text === "合并") return "合并";
+    if (text === "NO_MERGE" || text === "不合并") return "不合并";
     return text || "-";
   }
 
@@ -212,10 +212,10 @@
     const oldModel = keepSelected ? els.modelFilter.value : "";
     const oldSpec = keepSelected ? els.specFilter.value : "";
 
-    els.modelFilter.innerHTML = ['<option value="">????</option>']
+    els.modelFilter.innerHTML = ['<option value="">全部型号</option>']
       .concat(vm.modelOptions.map(v => `<option value="${v}">${v}</option>`))
       .join("");
-    els.specFilter.innerHTML = ['<option value="">??????</option>']
+    els.specFilter.innerHTML = ['<option value="">全部外箱规格</option>']
       .concat(vm.specOptions.map(v => `<option value="${v}">${v}</option>`))
       .join("");
 
@@ -230,10 +230,10 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ solution_id: solutionId, actor: "demo_user" })
       });
-      showToast("???????");
+      showToast("方案确认成功");
       await loadPlanDetail(true);
     } catch (err) {
-      showToast(`?????${err.message}`);
+      showToast(`确认失败：${err.message}`);
     }
   }
 
@@ -244,18 +244,18 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: "demo rollback", actor: "demo_user" })
       });
-      showToast("?????");
+      showToast("已回退到待确认");
       await loadPlanDetail(true);
     } catch (err) {
-      showToast(`?????${err.message}`);
+      showToast(`回退失败：${err.message}`);
     }
   }
 
   function renderSummary(vm) {
     const { plan, orders, selectedSolution } = vm;
 
-    els.detailTitle.textContent = `???? - #${plan.id}`;
-    els.detailSub.textContent = `???${plan.customer_code || "-"} ? ???${plan.ship_date || "-"} ? ???${normalizeStatus(plan.status)} ? ?????${normalizeMergeMode(plan.merge_mode)}`;
+    els.detailTitle.textContent = `任务详情 - #${plan.id}`;
+    els.detailSub.textContent = `客户：${plan.customer_code || "-"} ｜ 发货日：${plan.ship_date || "-"} ｜ 状态：${normalizeStatus(plan.status)} ｜ 装箱要求：${normalizeMergeMode(plan.merge_mode)}`;
 
     const lineCount = orders.length;
     const boxCount = Number(selectedSolution ? selectedSolution.box_count : 0);
@@ -263,10 +263,10 @@
     const weightKg = Number(selectedSolution ? selectedSolution.gross_weight_kg : 0);
 
     els.detailKpis.innerHTML = [
-      { label: "????", value: String(lineCount) },
-      { label: "????", value: String(boxCount) },
-      { label: "????", value: String(palletCount) },
-      { label: "???", value: `${weightKg.toFixed(1)} kg` },
+      { label: "订单行数", value: String(lineCount) },
+      { label: "外箱数", value: String(boxCount) },
+      { label: "托盘数", value: String(palletCount) },
+      { label: "总毛重", value: `${weightKg.toFixed(1)} kg` },
     ].map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
 
     const selectedId = Number(plan.final_solution_id || 0);
@@ -276,20 +276,20 @@
         <article class="solution">
           <span class="badge">${s.tag || "-"}</span>
           <h4>${s.name}</h4>
-          <div>???<strong>${s.box_count}</strong></div>
-          <div>???<strong>${s.pallet_count}</strong></div>
-          <div>???<strong>${Number(s.gross_weight_kg || 0).toFixed(1)} kg</strong></div>
-          <button style="margin-top:8px;" class="${isSelected ? "primary" : "ghost"}" data-confirm-solution="${s.id}">${isSelected ? "???" : "??????"}</button>
+          <div>外箱数：<strong>${s.box_count}</strong></div>
+          <div>托盘数：<strong>${s.pallet_count}</strong></div>
+          <div>总重：<strong>${Number(s.gross_weight_kg || 0).toFixed(1)} kg</strong></div>
+          <button style="margin-top:8px;" class="${isSelected ? "primary" : "ghost"}" data-confirm-solution="${s.id}">${isSelected ? "已确认" : "确认此方案"}</button>
         </article>
       `;
-    }).join("") + `<div style="margin-top:8px;"><button class="ghost" id="rollbackConfirmBtn">????</button></div>`;
+    }).join("") + `<div style="margin-top:8px;"><button class="ghost" id="rollbackConfirmBtn">回退确认</button></div>`;
 
     els.ordersText.textContent = orders.map(row => row.order_no).join(" + ") || "-";
     els.metricsTable.innerHTML = [
-      ["????", normalizeStatus(plan.status)],
-      ["?????", String(vm.solutions.length)],
-      ["????", selectedSolution ? `${selectedSolution.name} (#${selectedSolution.id})` : "-"],
-      ["????ID", plan.final_solution_id || "???"],
+      ["任务状态", normalizeStatus(plan.status)],
+      ["方案数量", String(vm.solutions.length)],
+      ["当前方案", selectedSolution ? `${selectedSolution.name} (#${selectedSolution.id})` : "-"],
+      ["最终方案ID", plan.final_solution_id || "未确认"],
     ].map(row => `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`).join("");
 
     document.querySelectorAll("[data-confirm-solution]").forEach(btn => {
@@ -304,7 +304,7 @@
 
   function init3DScene() {
     if (!window.THREE || !THREE.OrbitControls) {
-      els.sceneMeta.textContent = "Three.js ???????? vendor ???";
+      els.sceneMeta.textContent = "Three.js 资源未加载，请检查 /demo/vendor 文件";
       return;
     }
 
@@ -520,20 +520,20 @@
     sceneGroup = new THREE.Group();
 
     if (!boxes.length) {
-      els.sceneMeta.textContent = "??????????????????????";
+      els.sceneMeta.textContent = "当前筛选条件下无可展示外箱";
       scene.add(sceneGroup);
       return;
     }
 
     if (state.viewMode === "packing") {
       buildPackingView(boxes, sceneGroup);
-      els.sceneMeta.textContent = `??????? ${Math.min(4, boxes.length)} ??????? ${boxes.length} ??`;
+      els.sceneMeta.textContent = `装箱视图：显示 ${Math.min(4, boxes.length)} 箱（共 ${boxes.length} 箱）`;
       els.viewPackingBtn.classList.add("primary");
       els.viewPalletBtn.classList.remove("primary");
     } else {
       buildPalletView(boxes, sceneGroup);
       const palletCount = new Set(boxes.map(b => b.palletSeq)).size;
-      els.sceneMeta.textContent = `?????${palletCount} ???${boxes.length} ?????????`;
+      els.sceneMeta.textContent = `装托视图：托盘 ${palletCount} 个，外箱 ${boxes.length} 箱`;
       els.viewPalletBtn.classList.add("primary");
       els.viewPackingBtn.classList.remove("primary");
     }
@@ -547,13 +547,13 @@
     ensurePlanId();
     renderPlanOptions();
 
-    els.datasetSwitch.innerHTML = `<button class="ghost" id="refreshPlansBtn">????</button>`;
+    els.datasetSwitch.innerHTML = `<button class="ghost" id="refreshPlansBtn">刷新</button>`;
     const refreshBtn = document.getElementById("refreshPlansBtn");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
         await loadPlanList();
         await loadPlanDetail(true);
-        showToast("???????");
+        showToast("计划列表已刷新");
       });
     }
   }
@@ -577,13 +577,13 @@
     try {
       await loadPlanList();
       if (!state.planId) {
-        els.detailSub.textContent = "??????";
+        els.detailSub.textContent = "暂无可查看的计划";
         return;
       }
       await loadPlanDetail(true);
     } catch (err) {
-      els.detailSub.textContent = `??????${err.message}`;
-      showToast("????????????");
+      els.detailSub.textContent = `加载失败：${err.message}`;
+      showToast("详情加载失败，请检查后端服务");
     }
   }
 
@@ -604,7 +604,7 @@
     els.specFilter.value = "";
     const vm = getCurrentViewModel();
     if (vm) render3D(vm);
-    showToast("3D ?????");
+    showToast("3D 筛选已重置");
   });
 
   els.viewPackingBtn.addEventListener("click", () => {

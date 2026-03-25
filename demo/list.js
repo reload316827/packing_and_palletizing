@@ -30,34 +30,34 @@
   }
 
   function statusClass(status) {
-    if (status === "CONFIRMED" || status === "???") return "done";
-    if (status === "PENDING_CONFIRM" || status === "???") return "pending";
-    if (status === "CALCULATING" || status === "???") return "pending";
+    if (status === "CONFIRMED") return "done";
+    if (status === "PENDING_CONFIRM") return "pending";
+    if (status === "CALCULATING") return "pending";
     return "draft";
   }
 
   function normalizeMergeMode(value) {
     const text = String(value || "").trim();
-    if (text === "MERGE" || text === "??") return "??";
-    if (text === "NO_MERGE" || text === "???") return "???";
+    if (text === "MERGE" || text === "合并") return "合并";
+    if (text === "NO_MERGE" || text === "不合并") return "不合并";
     return text || "-";
   }
 
   function normalizeStatus(value) {
     const text = String(value || "").trim();
     const map = {
-      DRAFT: "??",
-      CALCULATING: "???",
-      PENDING_CONFIRM: "???",
-      CONFIRMED: "???",
-      CALCULATE_FAILED: "????"
+      DRAFT: "草稿",
+      CALCULATING: "计算中",
+      PENDING_CONFIRM: "待确认",
+      CONFIRMED: "已确认",
+      CALCULATE_FAILED: "计算失败"
     };
     return map[text] || text || "-";
   }
 
   function buildCustomerOptions(plans) {
     const values = [...new Set(plans.map(item => String(item.customer_code || "").trim()).filter(Boolean))];
-    els.customerFilter.innerHTML = ['<option value="">????</option>']
+    els.customerFilter.innerHTML = ['<option value="">全部客户</option>']
       .concat(values.map(v => `<option value="${v}">${v}</option>`))
       .join("");
   }
@@ -76,7 +76,7 @@
           plan.customer_code,
           plan.ship_date,
           plan.merge_mode,
-          plan.status,
+          plan.status
         ].join(" ").toLowerCase().includes(keyword);
         if (!hit) return false;
       }
@@ -90,10 +90,10 @@
     const totalWeight = plans.reduce((sum, row) => sum + Number(row.summary_weight_kg || 0), 0);
 
     els.listKpis.innerHTML = [
-      { label: "????", value: String(plans.length) },
-      { label: "????", value: String(totalBoxes) },
-      { label: "????", value: String(totalPallets) },
-      { label: "???", value: `${totalWeight.toFixed(1)} kg` }
+      { label: "计划数", value: String(plans.length) },
+      { label: "外箱数", value: String(totalBoxes) },
+      { label: "托盘数", value: String(totalPallets) },
+      { label: "总毛重", value: `${totalWeight.toFixed(1)} kg` }
     ]
       .map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`)
       .join("");
@@ -113,10 +113,10 @@
         <td>${plan.customer_code || "-"}</td>
         <td>${plan.ship_date || "-"}</td>
         <td>${normalizeMergeMode(plan.merge_mode)}</td>
-        <td>${plan.order_count || 0} ?</td>
+        <td>${plan.order_count || 0} 行</td>
         <td><span class="status ${statusClass(plan.status)}">${normalizeStatus(plan.status)}</span></td>
         <td>${plan.summary_box_count || 0} / ${plan.summary_pallet_count || 0}</td>
-        <td><button data-open-plan="${plan.id}">????</button></td>
+        <td><button data-open-plan="${plan.id}">查看详情</button></td>
       </tr>
     `).join("");
 
@@ -137,18 +137,16 @@
   async function refresh(resetFilterOptions) {
     try {
       const plans = await loadPlans();
-      if (resetFilterOptions) {
-        buildCustomerOptions(plans);
-      }
+      if (resetFilterOptions) buildCustomerOptions(plans);
       const filtered = applyClientFilters(plans);
-      els.datasetName.textContent = `?????? ? ??? ${plans.length} ? ???? ${filtered.length}`;
+      els.datasetName.textContent = `任务总数 ${plans.length}，筛选后 ${filtered.length}`;
       renderKpis(filtered);
       renderTable(filtered);
     } catch (err) {
-      els.datasetName.textContent = "??????????";
+      els.datasetName.textContent = "任务加载失败";
       els.planTable.innerHTML = "";
       els.planEmpty.style.display = "block";
-      els.planEmpty.textContent = `??????${err.message}`;
+      els.planEmpty.textContent = `加载失败：${err.message}`;
       renderKpis([]);
     }
   }
@@ -162,7 +160,7 @@
     els.customerFilter.value = "";
     els.statusFilter.value = "";
     els.keywordInput.value = "";
-    showToast("?????");
+    showToast("筛选已重置");
     refresh(false);
   });
 
