@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>装箱装托一体化操作台</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1>Packing Studio</h1>
+          <p>一体化操作台</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="./list.html">列表页</a>
+        <a href="./detail.html">详情页</a>
+        <a href="./rules.html">规则页</a>
+        <a href="./overview.html">汇总页</a>
+        <a class="active" href="./ops.html">全流程操作</a>
+      </nav>
+      <div class="sidebar-foot">可直接网页完成导入、计算、确认、导出</div>
+    </aside>
+
+    <main class="main">
+      <section class="card top">
+        <div>
+          <h2>前后端一体化操作台</h2>
+          <p>同域访问：网页直接调用后端 API</p>
+        </div>
+        <div class="toolbar">
+          <button id="refreshAllBtn">刷新全部</button>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <article class="card">
+          <h3 style="margin-top:0;">1. 规则上传并激活</h3>
+          <div class="row" style="margin-bottom:10px;">
+            <input id="boxRuleFile" type="file" accept=".xlsx,.xls" />
+            <button id="uploadBoxRuleBtn">上传型号-内盒规则</button>
+          </div>
+          <div class="row">
+            <input id="palletRuleFile" type="file" accept=".xlsx,.xls" />
+            <button id="uploadPalletRuleBtn">上传内盒-外箱-托盘规则</button>
+          </div>
+          <p id="ruleInfo" style="margin-top:10px;color:#475569;">-</p>
+        </article>
+
+        <article class="card">
+          <h3 style="margin-top:0;">2. 创建计划</h3>
+          <div class="row" style="margin-bottom:10px;">
+            <input id="customerCodeInput" placeholder="客户编号，如 CUST-6002" value="CUST-6002" />
+            <input id="shipDateInput" placeholder="发货日期 YYYY-MM-DD" value="2026-03-25" />
+            <select id="mergeModeInput">
+              <option value="NO_MERGE">不合并</option>
+              <option value="MERGE">合并</option>
+            </select>
+          </div>
+          <textarea id="ordersInput" rows="6" style="width:100%;" placeholder="每行：订单号,型号,数量&#10;ORD-001,54-1801,120&#10;ORD-002,54-82202,60"></textarea>
+          <div class="row" style="margin-top:10px;">
+            <button id="createPlanBtn" class="primary">创建计划</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="card">
+        <h3 style="margin-top:0;">3. 计划列表与操作</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>客户</th>
+              <th>发货日</th>
+              <th>状态</th>
+              <th>箱/托</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="plansBody"></tbody>
+        </table>
+      </section>
+
+      <section class="grid-2">
+        <article class="card">
+          <h3 style="margin-top:0;">4. 计划详情</h3>
+          <pre id="planDetail" style="white-space:pre-wrap; max-height:320px; overflow:auto;">-</pre>
+        </article>
+
+        <article class="card">
+          <h3 style="margin-top:0;">5. 布局查询</h3>
+          <div class="row" style="margin-bottom:10px;">
+            <input id="layoutPlanId" placeholder="计划ID" />
+            <input id="layoutPalletId" placeholder="托盘ID(可选)" />
+            <input id="layoutCartonId" placeholder="外箱ID(可选)" />
+            <input id="layoutModel" placeholder="型号(可选)" />
+            <button id="queryLayoutBtn">查询布局</button>
+          </div>
+          <pre id="layoutResult" style="white-space:pre-wrap; max-height:320px; overflow:auto;">-</pre>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">消息</div>
+  <script src="./ops.js"></script>
+</body>
+</html>

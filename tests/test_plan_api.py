@@ -3,7 +3,7 @@ import tempfile
 import time
 import unittest
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from backend_server import create_app
 
@@ -98,10 +98,28 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertEqual(uploaded.status_code, 201)
         self.assertEqual(uploaded.get_json()["upload"]["file_name"], "override_result.xlsx")
 
+        with tempfile.TemporaryDirectory(prefix="override_upload_") as temp_dir:
+            file_path = os.path.join(temp_dir, "override_web_upload.xlsx")
+            wb = Workbook()
+            wb.save(file_path)
+            wb.close()
+            with open(file_path, "rb") as fh:
+                uploaded2 = self.client.post(
+                    "/api/plans/{0}/override-upload".format(plan_id),
+                    data={
+                        "file": (fh, "override_web_upload.xlsx"),
+                        "actor": "qa",
+                        "note": "web upload",
+                    },
+                    content_type="multipart/form-data",
+                )
+            self.assertEqual(uploaded2.status_code, 201)
+            self.assertEqual(uploaded2.get_json()["upload"]["file_name"], "override_web_upload.xlsx")
+
         final_detail = self.client.get("/api/plans/{0}".format(plan_id))
         self.assertEqual(final_detail.status_code, 200)
         final_body = final_detail.get_json()
-        self.assertGreaterEqual(len(final_body["override_uploads"]), 1)
+        self.assertGreaterEqual(len(final_body["override_uploads"]), 2)
         actions = [row["action"] for row in final_body["audit_logs"]]
         self.assertIn("PLAN_CONFIRM", actions)
         self.assertIn("PLAN_ROLLBACK", actions)

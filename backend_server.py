@@ -28,6 +28,7 @@ def create_app():
                     "rules": "/api/rules",
                     "layout": "/api/layout/{plan_id}",
                     "demo_rules_page": "/demo/rules.html",
+                    "demo_ops_page": "/demo/ops.html",
                 },
             }
         )

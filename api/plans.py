@@ -1,8 +1,9 @@
 import json
+from pathlib import Path
 
 from flask import Blueprint, jsonify, request, send_file
 
-from core.db import get_conn
+from core.db import PROJECT_ROOT, get_conn
 from core.errors import AppError
 from core.time_utils import utc_now_iso
 from jobs.plan_calculate import calculate_plan, enqueue_plan_calculation
@@ -316,13 +317,21 @@ def rollback_plan_confirmation(plan_id):
 def upload_override_file(plan_id):
     # ????????????????????
     payload = request.get_json(silent=True) or {}
-    file_name = str(payload.get("file_name") or "").strip()
-    if not file_name:
-        return _error_response(AppError("MISSING_FILE_NAME", "file_name is required"))
+    if request.files:
+        try:
+            file_name, file_path = _save_uploaded_override_file()
+        except AppError as err:
+            return _error_response(err)
+        note = str(request.form.get("note") or "").strip() or None
+        actor = str(request.form.get("actor") or "system")
+    else:
+        file_name = str(payload.get("file_name") or "").strip()
+        if not file_name:
+            return _error_response(AppError("MISSING_FILE_NAME", "file_name is required"))
+        file_path = str(payload.get("file_path") or "").strip() or None
+        note = str(payload.get("note") or "").strip() or None
+        actor = str(payload.get("actor") or "system")
 
-    file_path = str(payload.get("file_path") or "").strip() or None
-    note = str(payload.get("note") or "").strip() or None
-    actor = str(payload.get("actor") or "system")
     now = utc_now_iso()
 
     with get_conn() as conn:
@@ -385,3 +394,23 @@ def export_plan(plan_id):
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
     )
+
+
+def _safe_file_name(name):
+    invalid = set('\\/:*?"<>|')
+    return "".join(ch if ch not in invalid else "_" for ch in str(name or "").strip())
+
+
+def _save_uploaded_override_file():
+    file = request.files.get("file")
+    if not file or not str(file.filename or "").strip():
+        raise AppError("MISSING_UPLOAD_FILE", "file is required in multipart/form-data")
+
+    origin_name = _safe_file_name(file.filename)
+    timestamp = utc_now_iso().replace("-", "").replace(":", "").replace(".", "")
+    upload_dir = PROJECT_ROOT / "output" / "uploads" / "override"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved_name = "{0}_{1}".format(timestamp, origin_name or "override.xlsx")
+    saved_path = upload_dir / saved_name
+    file.save(str(saved_path))
+    return (origin_name or saved_name), str(saved_path)
