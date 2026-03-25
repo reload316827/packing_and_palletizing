@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 
+from api.layout import layout_bp
 from api.plans import plans_bp
 from api.rules import rules_bp
 from core.db import init_db
@@ -13,6 +14,7 @@ def create_app():
     init_db()
     app.register_blueprint(plans_bp)
     app.register_blueprint(rules_bp)
+    app.register_blueprint(layout_bp)
 
     @app.route("/healthz", methods=["GET"])
     def healthz():

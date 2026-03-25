@@ -1,11 +1,12 @@
 import json
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from core.db import get_conn
 from core.errors import AppError
 from core.time_utils import utc_now_iso
 from jobs.plan_calculate import calculate_plan, enqueue_plan_calculation
+from services.exporter import export_plan_excel
 
 plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
@@ -351,3 +352,36 @@ def upload_override_file(plan_id):
         row = conn.execute("SELECT * FROM plan_override_upload WHERE id = ?", (upload_id,)).fetchone()
 
     return jsonify({"upload": _row_to_dict(row)}), 201
+
+
+@plans_bp.route("/<int:plan_id>/export", methods=["POST"])
+def export_plan(plan_id):
+    # 导出当前任务方案 Excel（默认最终方案，否则取排名第一方案）
+    payload = request.get_json(silent=True) or {}
+    solution_id = payload.get("solution_id")
+    template_path = str(payload.get("template_path") or "").strip() or None
+    output_dir = str(payload.get("output_dir") or "").strip() or None
+
+    if solution_id not in (None, ""):
+        try:
+            solution_id = int(solution_id)
+        except (TypeError, ValueError):
+            return _error_response(AppError("INVALID_SOLUTION_ID", "solution_id must be integer"))
+    else:
+        solution_id = None
+
+    try:
+        result = export_plan_excel(
+            plan_id=plan_id,
+            solution_id=solution_id,
+            template_path=template_path,
+            output_dir=output_dir,
+        )
+    except AppError as err:
+        return _error_response(err)
+
+    return send_file(
+        result["file_path"],
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+    )
