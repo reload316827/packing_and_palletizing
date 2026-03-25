@@ -9,7 +9,7 @@ from core.errors import AppError
 
 def create_app():
     # 初始化 Flask 应用并注册路由
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="demo", static_url_path="/demo")
     init_db()
     app.register_blueprint(plans_bp)
     app.register_blueprint(rules_bp)
@@ -27,6 +27,7 @@ def create_app():
                     "plans": "/api/plans",
                     "rules": "/api/rules",
                     "layout": "/api/layout/{plan_id}",
+                    "demo_rules_page": "/demo/rules.html",
                 },
             }
         )
