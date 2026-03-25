@@ -395,3 +395,28 @@ def get_active_box_rule_bundle(at_time=None):
         "version": snapshot.get("version"),
         "rules": [dict(row) for row in rows],
     }
+
+
+def get_active_pallet_rule_bundle(at_time=None):
+    # 读取指定时间点生效的 pallet 规则及版本信息，供装托链路追溯。
+    active = get_active_snapshot("pallet", at_time)
+    snapshot = active.get("active_snapshot")
+    if not snapshot:
+        return {"snapshot_id": None, "version": None, "rules": []}
+
+    snapshot_id = snapshot["id"]
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT inner_box_code, carton_spec_cm, pallet_spec_cm, carton_qty, pallet_carton_qty
+            FROM rule_inner_outer_pallet
+            WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchall()
+
+    return {
+        "snapshot_id": snapshot_id,
+        "version": snapshot.get("version"),
+        "rules": [dict(row) for row in rows],
+    }
