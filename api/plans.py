@@ -52,7 +52,7 @@ def _insert_audit(conn, action, target_type, target_id, payload, actor="system")
 
 @plans_bp.route("", methods=["GET"])
 def list_plans():
-    # ??????????????????
+    # ??????????????????????????
     status = str(request.args.get("status", "")).strip()
     customer_code = str(request.args.get("customer_code", "")).strip()
 
@@ -68,8 +68,39 @@ def list_plans():
 
     with get_conn() as conn:
         rows = conn.execute(sql, tuple(args)).fetchall()
+        plans = []
+        for row in rows:
+            plan = _row_to_dict(row)
+            order_count = conn.execute(
+                "SELECT COUNT(1) AS cnt FROM shipment_plan_order WHERE plan_id = ?",
+                (plan["id"],),
+            ).fetchone()["cnt"]
 
-    return jsonify({"plans": [_row_to_dict(row) for row in rows]}), 200
+            final_solution_id = plan.get("final_solution_id")
+            if final_solution_id:
+                summary_solution = conn.execute(
+                    "SELECT * FROM solution WHERE id = ? AND plan_id = ?",
+                    (final_solution_id, plan["id"]),
+                ).fetchone()
+            else:
+                summary_solution = conn.execute(
+                    """
+                    SELECT *
+                    FROM solution
+                    WHERE plan_id = ?
+                    ORDER BY score_rank ASC, id ASC
+                    LIMIT 1
+                    """,
+                    (plan["id"],),
+                ).fetchone()
+
+            plan["order_count"] = int(order_count or 0)
+            plan["summary_box_count"] = int(summary_solution["box_count"]) if summary_solution else 0
+            plan["summary_pallet_count"] = int(summary_solution["pallet_count"]) if summary_solution else 0
+            plan["summary_weight_kg"] = float(summary_solution["gross_weight_kg"]) if summary_solution else 0.0
+            plans.append(plan)
+
+    return jsonify({"plans": plans}), 200
 
 
 @plans_bp.route("", methods=["POST"])

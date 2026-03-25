@@ -1,5 +1,5 @@
-﻿(function () {
-  const { datasets, setCurrentDatasetKey, getCurrentDatasetKey, buildDatasetSwitchHTML } = window.PACKING_DEMO;
+(function () {
+  const API_BASE = "";
 
   const els = {
     datasetName: document.getElementById("datasetName"),
@@ -18,79 +18,44 @@
 
   const moduleConfig = {
     customerRules: {
-      columns: ["customerId", "customerName", "mode", "boxType", "provider", "special"],
-      labels: ["客户编号", "客户名称", "装箱要求", "内盒类型", "提供方", "特定内盒要求"]
+      columns: ["customer_code", "plan_count", "confirmed_count", "last_ship_date"],
+      labels: ["????", "???", "?????", "??????"]
     },
     modelInner: {
-      columns: ["model", "inner", "unitWeight", "perCase"],
-      labels: ["型号", "默认内盒", "单重(kg)", "默认每箱"]
+      columns: ["model_code", "inner_box_spec", "qty_per_carton", "gross_weight_kg"],
+      labels: ["??", "????", "????", "??(kg)"]
     },
     innerOuter: {
-      columns: ["inner", "outerSpec", "perCase", "pallet"],
-      labels: ["内盒编号", "外箱规格(cm)", "一箱总数", "默认托盘"]
+      columns: ["inner_box_code", "carton_spec_cm", "pallet_spec_cm", "pallet_carton_qty"],
+      labels: ["????", "????(cm)", "????", "???????"]
     }
   };
-
-  let datasetKey = getCurrentDatasetKey();
 
   function showToast(msg) {
     els.toast.textContent = msg;
     els.toast.classList.add("show");
     clearTimeout(showToast.timer);
-    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1200);
+    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1500);
   }
 
-  function renderSwitch() {
-    els.datasetSwitch.innerHTML = buildDatasetSwitchHTML(datasetKey);
-    els.datasetSwitch.querySelectorAll("[data-switch-dataset]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        datasetKey = setCurrentDatasetKey(btn.dataset.switchDataset);
-        showToast(`已切换到数据集 ${datasetKey}`);
-        init();
-      });
-    });
+  async function requestJson(path, options) {
+    const res = await fetch(`${API_BASE}${path}`, options);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`HTTP ${res.status}: ${body}`);
+    }
+    return res.json();
   }
 
-  function getRows(dataset) {
-    const moduleKey = els.moduleFilter.value;
-    const rows = dataset.rules[moduleKey] || [];
-    const keyword = els.keywordInput.value.trim().toLowerCase();
-
+  function withKeyword(rows) {
+    const keyword = String(els.keywordInput.value || "").trim().toLowerCase();
     if (!keyword) return rows;
-
     return rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(keyword));
   }
 
-  function renderKpis(dataset, rows) {
-    const moduleKey = els.moduleFilter.value;
-    const moduleName = {
-      customerRules: "客户规则",
-      modelInner: "型号-内盒",
-      innerOuter: "内盒-外箱"
-    }[moduleKey];
-
-    const totalModules = Object.keys(dataset.rules).length;
-    const uniqueCount = moduleKey === "customerRules"
-      ? new Set(rows.map(r => r.customerId)).size
-      : moduleKey === "modelInner"
-        ? new Set(rows.map(r => r.model)).size
-        : new Set(rows.map(r => r.inner)).size;
-
-    els.ruleKpis.innerHTML = [
-      { label: "当前数据集", value: datasetKey },
-      { label: "规则模块", value: moduleName },
-      { label: "当前行数", value: String(rows.length) },
-      { label: "唯一键数量", value: String(uniqueCount || 0) }
-    ].map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
-
-    void totalModules;
-  }
-
-  function renderTable(rows) {
-    const moduleKey = els.moduleFilter.value;
+  function renderTable(moduleKey, rows) {
     const conf = moduleConfig[moduleKey];
-
-    els.ruleHead.innerHTML = conf.labels.map(l => `<th>${l}</th>`).join("");
+    els.ruleHead.innerHTML = conf.labels.map(label => `<th>${label}</th>`).join("");
 
     if (!rows.length) {
       els.ruleBody.innerHTML = "";
@@ -105,30 +70,145 @@
     }).join("");
   }
 
-  function init() {
-    const dataset = datasets[datasetKey];
-    els.datasetName.textContent = `${dataset.name} ｜ 可维护模块 3 个`;
-    renderSwitch();
-    const rows = getRows(dataset);
-    renderKpis(dataset, rows);
-    renderTable(rows);
+  function renderKpis(moduleKey, rows, extra) {
+    const moduleName = {
+      customerRules: "????",
+      modelInner: "??-??",
+      innerOuter: "??-??-??"
+    }[moduleKey];
+
+    els.ruleKpis.innerHTML = [
+      { label: "????", value: "??API" },
+      { label: "????", value: moduleName },
+      { label: "????", value: String(rows.length) },
+      { label: "????", value: extra.version || "???" },
+    ].map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
+  }
+
+  async function loadCustomerRules() {
+    const body = await requestJson("/api/plans");
+    const plans = body.plans || [];
+    const grouped = new Map();
+
+    plans.forEach(plan => {
+      const key = String(plan.customer_code || "").trim() || "-";
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          customer_code: key,
+          plan_count: 0,
+          confirmed_count: 0,
+          last_ship_date: "-",
+        });
+      }
+      const item = grouped.get(key);
+      item.plan_count += 1;
+      if (String(plan.status || "") === "CONFIRMED") item.confirmed_count += 1;
+      if (String(plan.ship_date || "") > String(item.last_ship_date || "")) {
+        item.last_ship_date = String(plan.ship_date || "-");
+      }
+    });
+
+    return { rows: [...grouped.values()], version: "runtime" };
+  }
+
+  async function loadSnapshotRows(snapshotType) {
+    const active = await requestJson(`/api/rules/active?snapshot_type=${encodeURIComponent(snapshotType)}`);
+    const activeSnapshot = active.active_snapshot;
+    if (!activeSnapshot) {
+      return { rows: [], version: "???" };
+    }
+
+    const detail = await requestJson(`/api/rules/snapshots/${activeSnapshot.id}`);
+    return {
+      rows: detail.records_preview || [],
+      version: activeSnapshot.version || "-",
+    };
+  }
+
+  async function loadRowsByModule() {
+    const moduleKey = els.moduleFilter.value;
+    if (moduleKey === "customerRules") {
+      return loadCustomerRules();
+    }
+    if (moduleKey === "modelInner") {
+      return loadSnapshotRows("box");
+    }
+    return loadSnapshotRows("pallet");
+  }
+
+  async function handleImport() {
+    const moduleKey = els.moduleFilter.value;
+    if (moduleKey === "customerRules") {
+      showToast("??????????????????????");
+      return;
+    }
+
+    const inputPath = window.prompt("???????????????????", "");
+    if (!inputPath) return;
+
+    const endpoint = moduleKey === "modelInner" ? "/api/rules/box/import" : "/api/rules/pallet/import";
+
+    try {
+      const imported = await requestJson(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_path: inputPath })
+      });
+
+      await requestJson(`/api/rules/snapshots/${imported.snapshot_id}/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ effective_from: new Date().toISOString() })
+      });
+
+      showToast(`?????${imported.record_count} ???? ${imported.conflict_count}`);
+      await refresh();
+    } catch (err) {
+      showToast(`?????${err.message}`);
+    }
+  }
+
+  async function refresh() {
+    const moduleKey = els.moduleFilter.value;
+    try {
+      const loaded = await loadRowsByModule();
+      const rows = withKeyword(loaded.rows);
+      els.datasetName.textContent = `?????? ? ?? ${moduleKey}`;
+      renderKpis(moduleKey, rows, loaded);
+      renderTable(moduleKey, rows);
+    } catch (err) {
+      els.datasetName.textContent = "????????";
+      els.ruleHead.innerHTML = "";
+      els.ruleBody.innerHTML = "";
+      els.ruleEmpty.style.display = "block";
+      els.ruleEmpty.textContent = `??????${err.message}`;
+      renderKpis(moduleKey, [], { version: "-" });
+    }
   }
 
   [els.moduleFilter, els.keywordInput].forEach(el => {
-    el.addEventListener("input", init);
-    el.addEventListener("change", init);
+    el.addEventListener("input", refresh);
+    el.addEventListener("change", refresh);
   });
 
   els.resetFilters.addEventListener("click", () => {
     els.moduleFilter.value = "customerRules";
     els.keywordInput.value = "";
-    showToast("筛选已重置");
-    init();
+    showToast("?????");
+    refresh();
   });
 
-  [els.fakeAddBtn, els.fakeImportBtn].forEach(btn => {
-    btn.addEventListener("click", () => showToast("Demo 模式：未接入真实保存逻辑"));
-  });
+  els.fakeAddBtn.addEventListener("click", () => showToast("?????????????????"));
+  els.fakeImportBtn.addEventListener("click", handleImport);
 
-  init();
+  els.datasetSwitch.innerHTML = `<button class="ghost" id="refreshRulesBtn">????</button>`;
+  const refreshBtn = document.getElementById("refreshRulesBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      refresh();
+      showToast("?????");
+    });
+  }
+
+  refresh();
 })();

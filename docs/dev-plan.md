@@ -70,9 +70,9 @@
 ### 第6周：前后端联调
 | 任务ID | 任务 | 输出物 | 验收标准 | 依赖 | 负责人 |
 | --- | --- | --- | --- | --- | --- |
-| W6-01 | `list.html` 接口化 | `demo/list.js` 改造 | 真实任务列表可展示与筛选 | W5-01 | FE |
-| W6-02 | `detail.html` 接口化 | `demo/detail.js` 改造 | 可查看候选方案与指标 | W5-03 | FE |
-| W6-03 | `rules.html` 接口化 | `demo/rules.js` 改造 | 规则可查询与导入 | W2-02~04 | FE |
+| W6-01 | `list.html` 接口化（OK） | `demo/list.js` 改造 | 真实任务列表可展示与筛选 | W5-01 | FE |
+| W6-02 | `detail.html` 接口化（OK） | `demo/detail.js` 改造 | 可查看候选方案与指标 | W5-03 | FE |
+| W6-03 | `rules.html` 接口化（OK） | `demo/rules.js` 改造 | 规则可查询与导入 | W2-02~04 | FE |
 | W6-04 | `overview.html` 任务联动 | `demo/script.js` 改造 | 汇总页可展示真实任务数据 | W5-03 | FE |
 
 ### 第7周：导出模板与3D联动

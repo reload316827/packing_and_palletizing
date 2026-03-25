@@ -1,9 +1,8 @@
-﻿(function () {
-  const { datasets, setCurrentDatasetKey, getCurrentDatasetKey, buildDatasetSwitchHTML } = window.PACKING_DEMO;
+(function () {
+  const API_BASE = "";
 
   const els = {
     datasetName: document.getElementById("datasetName"),
-    datasetSwitch: document.getElementById("datasetSwitch"),
     customerFilter: document.getElementById("customerFilter"),
     statusFilter: document.getElementById("statusFilter"),
     keywordInput: document.getElementById("keywordInput"),
@@ -14,134 +13,158 @@
     toast: document.getElementById("toast")
   };
 
-  let datasetKey = getCurrentDatasetKey();
-
   function showToast(msg) {
     els.toast.textContent = msg;
     els.toast.classList.add("show");
     clearTimeout(showToast.timer);
-    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1200);
+    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1400);
   }
 
-  function renderSwitch() {
-    els.datasetSwitch.innerHTML = buildDatasetSwitchHTML(datasetKey);
-    els.datasetSwitch.querySelectorAll("[data-switch-dataset]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        datasetKey = setCurrentDatasetKey(btn.dataset.switchDataset);
-        showToast(`已切换到数据集 ${datasetKey}`);
-        init();
-      });
-    });
+  async function requestJson(path, options) {
+    const res = await fetch(`${API_BASE}${path}`, options);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`HTTP ${res.status}: ${body}`);
+    }
+    return res.json();
   }
 
-  function renderCustomerOptions(dataset) {
-    const options = ['<option value="">全部客户</option>']
-      .concat(dataset.customers.map(c => `<option value="${c.id}">${c.id} - ${c.name}</option>`));
-    els.customerFilter.innerHTML = options.join("");
+  function statusClass(status) {
+    if (status === "CONFIRMED" || status === "???") return "done";
+    if (status === "PENDING_CONFIRM" || status === "???") return "pending";
+    if (status === "CALCULATING" || status === "???") return "pending";
+    return "draft";
   }
 
-  function getFilteredPlans(dataset) {
-    const customerId = els.customerFilter.value;
-    const status = els.statusFilter.value;
-    const keyword = els.keywordInput.value.trim().toLowerCase();
+  function normalizeMergeMode(value) {
+    const text = String(value || "").trim();
+    if (text === "MERGE" || text === "??") return "??";
+    if (text === "NO_MERGE" || text === "???") return "???";
+    return text || "-";
+  }
 
-    return dataset.plans.filter(plan => {
-      if (customerId && plan.customerId !== customerId) return false;
-      if (status && plan.status !== status) return false;
+  function normalizeStatus(value) {
+    const text = String(value || "").trim();
+    const map = {
+      DRAFT: "??",
+      CALCULATING: "???",
+      PENDING_CONFIRM: "???",
+      CONFIRMED: "???",
+      CALCULATE_FAILED: "????"
+    };
+    return map[text] || text || "-";
+  }
 
+  function buildCustomerOptions(plans) {
+    const values = [...new Set(plans.map(item => String(item.customer_code || "").trim()).filter(Boolean))];
+    els.customerFilter.innerHTML = ['<option value="">????</option>']
+      .concat(values.map(v => `<option value="${v}">${v}</option>`))
+      .join("");
+  }
+
+  function applyClientFilters(plans) {
+    const customerCode = String(els.customerFilter.value || "").trim();
+    const keyword = String(els.keywordInput.value || "").trim().toLowerCase();
+
+    return plans.filter(plan => {
+      if (customerCode && String(plan.customer_code || "").trim() !== customerCode) {
+        return false;
+      }
       if (keyword) {
-        const hit = [plan.id, plan.orders, plan.customerId].join(" ").toLowerCase().includes(keyword);
+        const hit = [
+          plan.id,
+          plan.customer_code,
+          plan.ship_date,
+          plan.merge_mode,
+          plan.status,
+        ].join(" ").toLowerCase().includes(keyword);
         if (!hit) return false;
       }
-
       return true;
     });
   }
 
-  function statusClass(status) {
-    if (status === "已确认") return "done";
-    if (status === "待确认") return "pending";
-    return "draft";
-  }
-
-  function renderKpis(dataset, filteredPlans) {
-    const totalBoxes = filteredPlans.reduce((s, p) => s + p.kpis.boxCount, 0);
-    const totalPallets = filteredPlans.reduce((s, p) => s + p.kpis.palletCount, 0);
-    const totalWeight = filteredPlans.reduce((s, p) => s + p.kpis.weight, 0);
+  function renderKpis(plans) {
+    const totalBoxes = plans.reduce((sum, row) => sum + Number(row.summary_box_count || 0), 0);
+    const totalPallets = plans.reduce((sum, row) => sum + Number(row.summary_pallet_count || 0), 0);
+    const totalWeight = plans.reduce((sum, row) => sum + Number(row.summary_weight_kg || 0), 0);
 
     els.listKpis.innerHTML = [
-      { label: "任务数量", value: String(filteredPlans.length) },
-      { label: "外箱总数", value: String(totalBoxes) },
-      { label: "托盘总数", value: String(totalPallets) },
-      { label: "总毛重", value: `${totalWeight} kg` }
-    ].map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
+      { label: "????", value: String(plans.length) },
+      { label: "????", value: String(totalBoxes) },
+      { label: "????", value: String(totalPallets) },
+      { label: "???", value: `${totalWeight.toFixed(1)} kg` }
+    ]
+      .map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`)
+      .join("");
   }
 
-  function renderTable(dataset, filteredPlans) {
-    const customerMap = Object.fromEntries(dataset.customers.map(c => [c.id, c]));
-
-    if (!filteredPlans.length) {
+  function renderTable(plans) {
+    if (!plans.length) {
       els.planTable.innerHTML = "";
       els.planEmpty.style.display = "block";
       return;
     }
 
     els.planEmpty.style.display = "none";
-    els.planTable.innerHTML = filteredPlans.map(plan => {
-      const customer = customerMap[plan.customerId];
-      return `
-        <tr>
-          <td>${plan.id}</td>
-          <td>${customer ? customer.name : plan.customerId}</td>
-          <td>${plan.shipDate}</td>
-          <td>${plan.mode}</td>
-          <td>${plan.orders}</td>
-          <td><span class="status ${statusClass(plan.status)}">${plan.status}</span></td>
-          <td>${plan.kpis.boxCount} / ${plan.kpis.palletCount}</td>
-          <td><button data-open-plan="${plan.id}">查看详情</button></td>
-        </tr>
-      `;
-    }).join("");
+    els.planTable.innerHTML = plans.map(plan => `
+      <tr>
+        <td>${plan.id}</td>
+        <td>${plan.customer_code || "-"}</td>
+        <td>${plan.ship_date || "-"}</td>
+        <td>${normalizeMergeMode(plan.merge_mode)}</td>
+        <td>${plan.order_count || 0} ?</td>
+        <td><span class="status ${statusClass(plan.status)}">${normalizeStatus(plan.status)}</span></td>
+        <td>${plan.summary_box_count || 0} / ${plan.summary_pallet_count || 0}</td>
+        <td><button data-open-plan="${plan.id}">????</button></td>
+      </tr>
+    `).join("");
 
     els.planTable.querySelectorAll("[data-open-plan]").forEach(btn => {
       btn.addEventListener("click", () => {
-        window.location.href = `./detail.html?plan=${encodeURIComponent(btn.dataset.openPlan)}&ds=${datasetKey}`;
+        window.location.href = `./detail.html?plan=${encodeURIComponent(btn.dataset.openPlan)}`;
       });
     });
   }
 
-  function bindFilters() {
-    [els.customerFilter, els.statusFilter, els.keywordInput].forEach(el => {
-      el.addEventListener("input", () => init(false));
-      el.addEventListener("change", () => init(false));
-    });
-
-    els.resetFilters.addEventListener("click", () => {
-      els.customerFilter.value = "";
-      els.statusFilter.value = "";
-      els.keywordInput.value = "";
-      showToast("筛选已重置");
-      init(false);
-    });
+  async function loadPlans() {
+    const status = String(els.statusFilter.value || "").trim();
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const body = await requestJson(`/api/plans${query}`);
+    return body.plans || [];
   }
 
-  function init(resetFilters = true) {
-    const dataset = datasets[datasetKey];
-    els.datasetName.textContent = `${dataset.name} ｜ 客户数 ${dataset.customers.length} ｜ 任务数 ${dataset.plans.length}`;
-
-    renderSwitch();
-
-    if (resetFilters) {
-      renderCustomerOptions(dataset);
-      els.statusFilter.value = "";
-      els.keywordInput.value = "";
+  async function refresh(resetFilterOptions) {
+    try {
+      const plans = await loadPlans();
+      if (resetFilterOptions) {
+        buildCustomerOptions(plans);
+      }
+      const filtered = applyClientFilters(plans);
+      els.datasetName.textContent = `?????? ? ??? ${plans.length} ? ???? ${filtered.length}`;
+      renderKpis(filtered);
+      renderTable(filtered);
+    } catch (err) {
+      els.datasetName.textContent = "??????????";
+      els.planTable.innerHTML = "";
+      els.planEmpty.style.display = "block";
+      els.planEmpty.textContent = `??????${err.message}`;
+      renderKpis([]);
     }
-
-    const filteredPlans = getFilteredPlans(dataset);
-    renderKpis(dataset, filteredPlans);
-    renderTable(dataset, filteredPlans);
   }
 
-  bindFilters();
-  init(true);
+  [els.customerFilter, els.statusFilter, els.keywordInput].forEach(el => {
+    el.addEventListener("input", () => refresh(false));
+    el.addEventListener("change", () => refresh(false));
+  });
+
+  els.resetFilters.addEventListener("click", () => {
+    els.customerFilter.value = "";
+    els.statusFilter.value = "";
+    els.keywordInput.value = "";
+    showToast("?????");
+    refresh(false);
+  });
+
+  refresh(true);
 })();

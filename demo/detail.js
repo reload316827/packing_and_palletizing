@@ -1,11 +1,5 @@
-﻿(function () {
-  const {
-    datasets,
-    setCurrentDatasetKey,
-    getCurrentDatasetKey,
-    buildDatasetSwitchHTML,
-    getPlanById
-  } = window.PACKING_DEMO;
+(function () {
+  const API_BASE = "";
 
   const els = {
     detailTitle: document.getElementById("detailTitle"),
@@ -32,19 +26,15 @@
     "420867": 0x63e6be,
     "406010": 0xffd43b,
     "405790": 0xffa94d,
-    "510112": 0x91a7ff,
-    "510310": 0x9775fa,
-    "510402": 0xf783ac,
-    "520111": 0x66d9e8,
-    "520205": 0xb197fc,
-    "405512": 0x74c69d,
-    "405601": 0xe599f7
   };
 
-  let datasetKey = getCurrentDatasetKey();
-  let dataset = datasets[datasetKey];
-  let selectedPlanId = new URLSearchParams(window.location.search).get("plan") || dataset.plans[0].id;
-  let viewMode = "pallet";
+  const state = {
+    plans: [],
+    planId: new URLSearchParams(window.location.search).get("plan") || "",
+    detail: null,
+    selectedSolutionId: null,
+    viewMode: "pallet",
+  };
 
   let scene;
   let camera;
@@ -57,107 +47,264 @@
     els.toast.textContent = msg;
     els.toast.classList.add("show");
     clearTimeout(showToast.timer);
-    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1200);
+    showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1400);
   }
 
-  function currentPlan() {
-    return getPlanById(dataset, selectedPlanId);
+  async function requestJson(path, options) {
+    const res = await fetch(`${API_BASE}${path}`, options);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`HTTP ${res.status}: ${body}`);
+    }
+    return res.json();
   }
 
-  function renderSwitch() {
-    els.datasetSwitch.innerHTML = buildDatasetSwitchHTML(datasetKey);
-    els.datasetSwitch.querySelectorAll("[data-switch-dataset]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        datasetKey = setCurrentDatasetKey(btn.dataset.switchDataset);
-        dataset = datasets[datasetKey];
-        selectedPlanId = dataset.plans[0].id;
-        showToast(`已切换到数据集 ${datasetKey}`);
-        renderAll(true);
+  function normalizeStatus(value) {
+    const map = {
+      DRAFT: "??",
+      CALCULATING: "???",
+      PENDING_CONFIRM: "???",
+      CONFIRMED: "???",
+      CALCULATE_FAILED: "????"
+    };
+    return map[String(value || "")] || String(value || "-");
+  }
+
+  function normalizeMergeMode(value) {
+    const text = String(value || "").trim();
+    if (text === "MERGE" || text === "??") return "??";
+    if (text === "NO_MERGE" || text === "???") return "???";
+    return text || "-";
+  }
+
+  function parseSpec(specText, fallback) {
+    const text = String(specText || "").replace(/cm/gi, "");
+    const nums = text.match(/\d+(?:\.\d+)?/g) || [];
+    if (nums.length < 3) return fallback;
+    return [Number(nums[0]), Number(nums[1]), Number(nums[2])];
+  }
+
+  function ensurePlanId() {
+    if (state.planId) return;
+    if (state.plans.length > 0) state.planId = String(state.plans[0].id);
+  }
+
+  function parseMetrics(raw) {
+    if (!raw) return {};
+    if (typeof raw === "object") return raw;
+    try {
+      return JSON.parse(raw);
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function getCurrentViewModel() {
+    const detail = state.detail;
+    if (!detail) return null;
+
+    const plan = detail.plan || {};
+    const orders = detail.orders || [];
+    const solutions = (detail.solutions || []).map(row => ({
+      ...row,
+      metrics: parseMetrics(row.metrics_payload),
+    }));
+
+    const selectedSolution = solutions.find(s => Number(s.id) === Number(state.selectedSolutionId)) || solutions[0] || null;
+    if (!selectedSolution) {
+      return {
+        plan,
+        orders,
+        solutions,
+        selectedSolution: null,
+        boxes: [],
+        modelOptions: [],
+        specOptions: [],
+      };
+    }
+
+    const boxRows = (detail.solution_item_boxes || []).filter(row => Number(row.solution_id) === Number(selectedSolution.id));
+    const palletRows = (detail.solution_item_pallets || []).filter(row => Number(row.solution_id) === Number(selectedSolution.id));
+
+    const modelMap = new Map();
+    boxRows.forEach(row => {
+      const key = String(row.carton_id || "");
+      if (!modelMap.has(key)) modelMap.set(key, new Set());
+      modelMap.get(key).add(String(row.model_code || "-").trim() || "-");
+    });
+
+    let boxes = [];
+    if (palletRows.length > 0) {
+      boxes = palletRows.map(row => {
+        const models = [...(modelMap.get(String(row.carton_id || "")) || new Set(["-"]))];
+        const dims = parseSpec(row.carton_spec_cm, [56, 38, 29]);
+        const rowSeq = Number(row.row_seq || 1);
+        return {
+          cartonId: String(row.carton_id || "-"),
+          palletSeq: Number(row.pallet_seq || 1),
+          palletId: String(row.pallet_id || "PALLET-001"),
+          spec: String(row.carton_spec_cm || "56*38*29"),
+          pose: String(row.carton_pose || "upright"),
+          w: Math.max(10, dims[0] * 0.45),
+          d: Math.max(8, dims[1] * 0.45),
+          h: Math.max(6, dims[2] * 0.35),
+          models,
+          grid: { cols: 3, rows: 2, layers: 2 },
+          pattern: models,
+          slotR: Math.floor((rowSeq - 1) / 3),
+          slotC: (rowSeq - 1) % 3,
+        };
       });
-    });
+    } else {
+      boxes = [...new Set(boxRows.map(row => String(row.carton_id || "")).filter(Boolean))].map((cartonId, idx) => {
+        const rows = boxRows.filter(row => String(row.carton_id || "") === cartonId);
+        const models = [...new Set(rows.map(row => String(row.model_code || "-").trim() || "-"))];
+        return {
+          cartonId,
+          palletSeq: Math.floor(idx / 6) + 1,
+          palletId: `PALLET-${String(Math.floor(idx / 6) + 1).padStart(3, "0")}`,
+          spec: "56*38*29",
+          pose: "upright",
+          w: 25,
+          d: 17,
+          h: 12,
+          models,
+          grid: { cols: 3, rows: 2, layers: 2 },
+          pattern: models,
+          slotR: Math.floor((idx % 6) / 3),
+          slotC: idx % 3,
+        };
+      });
+    }
+
+    const modelOptions = [...new Set(boxes.flatMap(row => row.models))].sort();
+    const specOptions = [...new Set(boxes.map(row => row.spec))].sort();
+
+    return {
+      plan,
+      orders,
+      solutions,
+      selectedSolution,
+      boxes,
+      modelOptions,
+      specOptions,
+    };
   }
 
-  function renderPlanOptions() {
-    els.planSelect.innerHTML = dataset.plans
-      .map(p => `<option value="${p.id}">${p.id} - ${p.orders}</option>`)
-      .join("");
-    els.planSelect.value = selectedPlanId;
-  }
-
-  function render3DFilterOptions(plan) {
-    const modelSet = new Set();
-    const specSet = new Set();
-
-    plan.layout.outerBoxes.forEach(box => {
-      specSet.add(box.spec);
-      box.models.forEach(m => modelSet.add(m));
-    });
-
-    const modelOptions = ['<option value="">全部型号</option>']
-      .concat([...modelSet].sort().map(m => `<option value="${m}">${m}</option>`));
-    const specOptions = ['<option value="">全部外箱规格</option>']
-      .concat([...specSet].sort().map(s => `<option value="${s}">${s}</option>`));
-
-    const modelPrev = els.modelFilter.value;
-    const specPrev = els.specFilter.value;
-
-    els.modelFilter.innerHTML = modelOptions.join("");
-    els.specFilter.innerHTML = specOptions.join("");
-
-    if ([...modelSet].includes(modelPrev)) els.modelFilter.value = modelPrev;
-    if ([...specSet].includes(specPrev)) els.specFilter.value = specPrev;
-  }
-
-  function filterBoxes(plan) {
-    const model = els.modelFilter.value;
-    const spec = els.specFilter.value;
-
-    return plan.layout.outerBoxes.filter(box => {
+  function filteredBoxes(vm) {
+    const model = String(els.modelFilter.value || "").trim();
+    const spec = String(els.specFilter.value || "").trim();
+    return vm.boxes.filter(box => {
       if (model && !box.models.includes(model)) return false;
       if (spec && box.spec !== spec) return false;
       return true;
     });
   }
 
-  function renderSummary(plan) {
-    const customer = dataset.customers.find(c => c.id === plan.customerId);
-    els.detailTitle.textContent = `任务详情 - ${plan.id}`;
-    els.detailSub.textContent = `${dataset.name} ｜ 客户：${customer ? customer.name : plan.customerId} ｜ 发货：${plan.shipDate} ｜ 状态：${plan.status}`;
+  function renderPlanOptions() {
+    els.planSelect.innerHTML = state.plans
+      .map(plan => `<option value="${plan.id}">#${plan.id} - ${plan.customer_code || "-"}</option>`)
+      .join("");
+    els.planSelect.value = String(state.planId || "");
+  }
 
-    const kpiItems = [
-      { label: "订单行数", value: String(plan.kpis.lineCount) },
-      { label: "外箱总数", value: String(plan.kpis.boxCount) },
-      { label: "托盘总数", value: String(plan.kpis.palletCount) },
-      { label: "总毛重", value: `${plan.kpis.weight} kg` }
-    ];
-    els.detailKpis.innerHTML = kpiItems.map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
+  function renderFilters(vm, keepSelected) {
+    const oldModel = keepSelected ? els.modelFilter.value : "";
+    const oldSpec = keepSelected ? els.specFilter.value : "";
 
-    els.solutionGrid.innerHTML = plan.solutions.map(s => `
-      <article class="solution">
-        <span class="badge">${s.complexity}复杂度</span>
-        <h4>${s.name}</h4>
-        <div>外箱：<strong>${s.boxCount}</strong></div>
-        <div>托盘：<strong>${s.palletCount}</strong></div>
-        <button style="margin-top:8px;" class="ghost" data-demo-action>选为最终方案</button>
-      </article>
-    `).join("");
+    els.modelFilter.innerHTML = ['<option value="">????</option>']
+      .concat(vm.modelOptions.map(v => `<option value="${v}">${v}</option>`))
+      .join("");
+    els.specFilter.innerHTML = ['<option value="">??????</option>']
+      .concat(vm.specOptions.map(v => `<option value="${v}">${v}</option>`))
+      .join("");
 
-    els.ordersText.textContent = plan.orders;
+    if (keepSelected && vm.modelOptions.includes(oldModel)) els.modelFilter.value = oldModel;
+    if (keepSelected && vm.specOptions.includes(oldSpec)) els.specFilter.value = oldSpec;
+  }
+
+  async function confirmSolution(solutionId) {
+    try {
+      await requestJson(`/api/plans/${encodeURIComponent(state.planId)}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solution_id: solutionId, actor: "demo_user" })
+      });
+      showToast("???????");
+      await loadPlanDetail(true);
+    } catch (err) {
+      showToast(`?????${err.message}`);
+    }
+  }
+
+  async function rollbackConfirmation() {
+    try {
+      await requestJson(`/api/plans/${encodeURIComponent(state.planId)}/rollback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "demo rollback", actor: "demo_user" })
+      });
+      showToast("?????");
+      await loadPlanDetail(true);
+    } catch (err) {
+      showToast(`?????${err.message}`);
+    }
+  }
+
+  function renderSummary(vm) {
+    const { plan, orders, selectedSolution } = vm;
+
+    els.detailTitle.textContent = `???? - #${plan.id}`;
+    els.detailSub.textContent = `???${plan.customer_code || "-"} ? ???${plan.ship_date || "-"} ? ???${normalizeStatus(plan.status)} ? ?????${normalizeMergeMode(plan.merge_mode)}`;
+
+    const lineCount = orders.length;
+    const boxCount = Number(selectedSolution ? selectedSolution.box_count : 0);
+    const palletCount = Number(selectedSolution ? selectedSolution.pallet_count : 0);
+    const weightKg = Number(selectedSolution ? selectedSolution.gross_weight_kg : 0);
+
+    els.detailKpis.innerHTML = [
+      { label: "????", value: String(lineCount) },
+      { label: "????", value: String(boxCount) },
+      { label: "????", value: String(palletCount) },
+      { label: "???", value: `${weightKg.toFixed(1)} kg` },
+    ].map(k => `<div class="kpi"><h4>${k.label}</h4><p>${k.value}</p></div>`).join("");
+
+    const selectedId = Number(plan.final_solution_id || 0);
+    els.solutionGrid.innerHTML = vm.solutions.map(s => {
+      const isSelected = Number(s.id) === Number(selectedId);
+      return `
+        <article class="solution">
+          <span class="badge">${s.tag || "-"}</span>
+          <h4>${s.name}</h4>
+          <div>???<strong>${s.box_count}</strong></div>
+          <div>???<strong>${s.pallet_count}</strong></div>
+          <div>???<strong>${Number(s.gross_weight_kg || 0).toFixed(1)} kg</strong></div>
+          <button style="margin-top:8px;" class="${isSelected ? "primary" : "ghost"}" data-confirm-solution="${s.id}">${isSelected ? "???" : "??????"}</button>
+        </article>
+      `;
+    }).join("") + `<div style="margin-top:8px;"><button class="ghost" id="rollbackConfirmBtn">????</button></div>`;
+
+    els.ordersText.textContent = orders.map(row => row.order_no).join(" + ") || "-";
     els.metricsTable.innerHTML = [
-      ["装箱要求", plan.mode],
-      ["任务状态", plan.status],
-      ["候选方案数", String(plan.solutions.length)],
-      ["数据集", datasetKey]
+      ["????", normalizeStatus(plan.status)],
+      ["?????", String(vm.solutions.length)],
+      ["????", selectedSolution ? `${selectedSolution.name} (#${selectedSolution.id})` : "-"],
+      ["????ID", plan.final_solution_id || "???"],
     ].map(row => `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`).join("");
 
-    document.querySelectorAll("[data-demo-action]").forEach(btn => {
-      btn.addEventListener("click", () => showToast("Demo 模式：未接入真实保存逻辑"));
+    document.querySelectorAll("[data-confirm-solution]").forEach(btn => {
+      btn.addEventListener("click", () => confirmSolution(Number(btn.dataset.confirmSolution)));
     });
+
+    const rollbackBtn = document.getElementById("rollbackConfirmBtn");
+    if (rollbackBtn) {
+      rollbackBtn.addEventListener("click", rollbackConfirmation);
+    }
   }
 
   function init3DScene() {
     if (!window.THREE || !THREE.OrbitControls) {
-      els.sceneMeta.textContent = "Three.js 加载失败，请检查 vendor 资源。";
+      els.sceneMeta.textContent = "Three.js ???????? vendor ???";
       return;
     }
 
@@ -176,7 +323,7 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.minDistance = 70;
-    controls.maxDistance = 800;
+    controls.maxDistance = 900;
     controls.target.set(0, 35, 0);
     controls.update();
 
@@ -281,22 +428,35 @@
   }
 
   function buildPalletView(boxes, group) {
-    const pallets = [...new Set(boxes.map(b => b.pallet))].sort((a, b) => a - b);
-    if (!pallets.length) return;
+    const palletMap = new Map();
+    boxes.forEach(box => {
+      const key = box.palletSeq;
+      if (!palletMap.has(key)) palletMap.set(key, []);
+      palletMap.get(key).push(box);
+    });
+    const pallets = [...palletMap.entries()].sort((a, b) => a[0] - b[0]);
 
     const spacing = 180;
-    pallets.forEach((palletNo, idx) => {
+    pallets.forEach(([palletSeq, list], idx) => {
       const xOffset = (idx - (pallets.length - 1) / 2) * spacing;
       addBox(group, { x: xOffset, y: 6, z: 0, w: 112, h: 12, d: 112, color: 0x8d5524 });
-      addLabel(group, `托盘${palletNo}\n116*116*103`, xOffset, 16, -64, { scaleX: 20, scaleY: 6, fontSize: 20 });
+      addLabel(group, `??${palletSeq}\n116*116*103`, xOffset, 16, -64, { scaleX: 20, scaleY: 6, fontSize: 20 });
 
-      const palletBoxes = boxes.filter(b => b.pallet === palletNo);
-      palletBoxes.forEach(box => {
+      list.forEach(box => {
         const x = xOffset - 34 + box.slotC * 34;
         const z = -34 + box.slotR * 34;
         const y = 12 + box.h / 2 + 1;
 
-        addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: 0xffa94d });
+        addBox(group, {
+          x,
+          y,
+          z,
+          w: box.w,
+          h: box.h,
+          d: box.d,
+          color: box.pose === "vertical" ? 0xff922b : 0x60a5fa,
+        });
+
         addLabel(group, `${box.spec}\n${box.models.join("+")}`, x, y + box.h / 2 + 6, z, { scaleX: 22, scaleY: 6.5, fontSize: 18 });
       });
     });
@@ -312,22 +472,8 @@
       const xBase = startX + i * 40;
       const yOuter = 12 + box.h / 2 + 1;
 
-      addBox(group, {
-        x: xBase,
-        y: yOuter,
-        z: 0,
-        w: box.w,
-        h: box.h,
-        d: box.d,
-        color: 0xf08c00,
-        opacity: 0.28
-      });
-
-      addLabel(group, `${box.spec}\n${box.models.join("+")}`, xBase, yOuter + box.h / 2 + 6, 0, {
-        scaleX: 22,
-        scaleY: 6.5,
-        fontSize: 18
-      });
+      addBox(group, { x: xBase, y: yOuter, z: 0, w: box.w, h: box.h, d: box.d, color: 0xf08c00, opacity: 0.28 });
+      addLabel(group, `${box.spec}\n${box.models.join("+")}`, xBase, yOuter + box.h / 2 + 6, 0, { scaleX: 22, scaleY: 6.5, fontSize: 18 });
 
       const cols = box.grid.cols;
       const rows = box.grid.rows;
@@ -354,47 +500,40 @@
               w: Math.max(innerW - 1.2, 5),
               h: Math.max(innerH - 1.2, 5),
               d: Math.max(innerD - 1.2, 5),
-              color: modelColors[model] || 0x94a3b8
+              color: modelColors[model] || 0x94a3b8,
             });
 
-            addLabel(group, model, x, y + innerH / 2 + 1.8, z, {
-              scaleX: 8,
-              scaleY: 2.8,
-              fontSize: 15,
-              bg: "rgba(15, 23, 42, 0.78)"
-            });
+            addLabel(group, model, x, y + innerH / 2 + 1.8, z, { scaleX: 8, scaleY: 2.8, fontSize: 15, bg: "rgba(15, 23, 42, 0.78)" });
           }
         }
       }
     });
   }
 
-  function render3D() {
+  function render3D(vm) {
     if (!scene) return;
-    const plan = currentPlan();
-    const boxes = filterBoxes(plan);
+    const boxes = filteredBoxes(vm);
 
     if (sceneGroup) {
       scene.remove(sceneGroup);
     }
-
     sceneGroup = new THREE.Group();
 
     if (!boxes.length) {
-      els.sceneMeta.textContent = "筛选结果为空，请放宽型号或外箱规格筛选条件。";
+      els.sceneMeta.textContent = "??????????????????????";
       scene.add(sceneGroup);
       return;
     }
 
-    if (viewMode === "packing") {
+    if (state.viewMode === "packing") {
       buildPackingView(boxes, sceneGroup);
-      els.sceneMeta.textContent = `装箱视图：展示 ${Math.min(4, boxes.length)} 个外箱（共匹配 ${boxes.length} 个）`;
+      els.sceneMeta.textContent = `??????? ${Math.min(4, boxes.length)} ??????? ${boxes.length} ??`;
       els.viewPackingBtn.classList.add("primary");
       els.viewPalletBtn.classList.remove("primary");
     } else {
       buildPalletView(boxes, sceneGroup);
-      const palletCount = new Set(boxes.map(b => b.pallet)).size;
-      els.sceneMeta.textContent = `装托视图：${palletCount} 托盘，${boxes.length} 外箱（已应用筛选）`;
+      const palletCount = new Set(boxes.map(b => b.palletSeq)).size;
+      els.sceneMeta.textContent = `?????${palletCount} ???${boxes.length} ?????????`;
       els.viewPalletBtn.classList.add("primary");
       els.viewPackingBtn.classList.remove("primary");
     }
@@ -402,46 +541,83 @@
     scene.add(sceneGroup);
   }
 
-  function renderAll(resetFilters) {
-    renderSwitch();
+  async function loadPlanList() {
+    const body = await requestJson("/api/plans");
+    state.plans = body.plans || [];
+    ensurePlanId();
     renderPlanOptions();
 
-    const plan = currentPlan();
-    if (resetFilters) {
-      els.modelFilter.value = "";
-      els.specFilter.value = "";
+    els.datasetSwitch.innerHTML = `<button class="ghost" id="refreshPlansBtn">????</button>`;
+    const refreshBtn = document.getElementById("refreshPlansBtn");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async () => {
+        await loadPlanList();
+        await loadPlanDetail(true);
+        showToast("???????");
+      });
     }
-    render3DFilterOptions(plan);
-    renderSummary(plan);
-    render3D();
   }
 
-  els.planSelect.addEventListener("change", () => {
-    selectedPlanId = els.planSelect.value;
-    renderAll(true);
+  async function loadPlanDetail(resetFilters) {
+    const body = await requestJson(`/api/plans/${encodeURIComponent(state.planId)}`);
+    state.detail = body;
+
+    const plan = body.plan || {};
+    const solutions = body.solutions || [];
+    state.selectedSolutionId = Number(plan.final_solution_id || 0) || Number((solutions[0] || {}).id || 0);
+
+    const vm = getCurrentViewModel();
+    renderSummary(vm);
+    renderFilters(vm, !resetFilters);
+    render3D(vm);
+  }
+
+  async function bootstrap() {
+    init3DScene();
+    try {
+      await loadPlanList();
+      if (!state.planId) {
+        els.detailSub.textContent = "??????";
+        return;
+      }
+      await loadPlanDetail(true);
+    } catch (err) {
+      els.detailSub.textContent = `??????${err.message}`;
+      showToast("????????????");
+    }
+  }
+
+  els.planSelect.addEventListener("change", async () => {
+    state.planId = String(els.planSelect.value || "");
+    await loadPlanDetail(true);
   });
 
   [els.modelFilter, els.specFilter].forEach(el => {
-    el.addEventListener("change", render3D);
+    el.addEventListener("change", () => {
+      const vm = getCurrentViewModel();
+      if (vm) render3D(vm);
+    });
   });
 
   els.reset3dFilters.addEventListener("click", () => {
     els.modelFilter.value = "";
     els.specFilter.value = "";
-    showToast("3D 筛选已重置");
-    render3D();
+    const vm = getCurrentViewModel();
+    if (vm) render3D(vm);
+    showToast("3D ?????");
   });
 
   els.viewPackingBtn.addEventListener("click", () => {
-    viewMode = "packing";
-    render3D();
+    state.viewMode = "packing";
+    const vm = getCurrentViewModel();
+    if (vm) render3D(vm);
   });
 
   els.viewPalletBtn.addEventListener("click", () => {
-    viewMode = "pallet";
-    render3D();
+    state.viewMode = "pallet";
+    const vm = getCurrentViewModel();
+    if (vm) render3D(vm);
   });
 
-  init3DScene();
-  renderAll(true);
+  bootstrap();
 })();
