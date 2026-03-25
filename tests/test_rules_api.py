@@ -6,6 +6,7 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from backend_server import create_app
+from core.db import get_conn
 
 
 def _find_file_by_keyword(project_root, keyword):
@@ -20,10 +21,19 @@ def _find_file_by_keyword(project_root, keyword):
 
 class RulesApiTestCase(unittest.TestCase):
     def setUp(self):
-        # 初始化应用和测试客户端
+        # 初始化应用与测试客户端，并清理规则数据避免串库
         self.app = create_app()
         self.client = self.app.test_client()
         self.project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self._reset_rule_tables()
+
+    def _reset_rule_tables(self):
+        with get_conn() as conn:
+            conn.execute("DELETE FROM rule_snapshot_activation")
+            conn.execute("DELETE FROM rule_snapshot_conflict")
+            conn.execute("DELETE FROM rule_model_inner_box")
+            conn.execute("DELETE FROM rule_inner_outer_pallet")
+            conn.execute("DELETE FROM rule_snapshot")
 
     def test_import_pallet_rules_and_get_snapshot(self):
         # 验证托盘规则导入与快照查询
@@ -41,7 +51,7 @@ class RulesApiTestCase(unittest.TestCase):
         self.assertGreaterEqual(len(body["records_preview"]), 1)
 
     def test_import_box_rules_with_xlsx(self):
-        # 验证 box 规则导入（当前用导入模板做占位解析）
+        # 验证 box 规则导入
         rule_file = _find_file_by_keyword(self.project_root, "导入模板")
         self.assertIsNotNone(rule_file)
 
@@ -61,6 +71,7 @@ class RulesApiTestCase(unittest.TestCase):
         ws.append(["M-001", "104", 20, 12.5])
         ws.append(["M-001", "105", 20, 12.5])
         wb.save(file_path)
+        wb.close()
 
         created = self.client.post("/api/rules/box/import", json={"file_path": file_path})
         self.assertEqual(created.status_code, 201)
@@ -69,19 +80,16 @@ class RulesApiTestCase(unittest.TestCase):
         self.assertGreaterEqual(body["conflict_count"], 1)
         snapshot_id = body["snapshot_id"]
 
-        # 查询冲突列表
         conflicts = self.client.get("/api/rules/snapshots/{0}/conflicts".format(snapshot_id))
         self.assertEqual(conflicts.status_code, 200)
         self.assertGreaterEqual(len(conflicts.get_json()["conflicts"]), 1)
 
-        # 激活版本
         activated = self.client.post(
             "/api/rules/snapshots/{0}/activate".format(snapshot_id),
             json={"effective_from": "2026-03-24T00:00:00+00:00"},
         )
         self.assertEqual(activated.status_code, 200)
 
-        # 按时间查询生效版本
         active = self.client.get("/api/rules/active?snapshot_type=box&at=2026-03-24T12:00:00+00:00")
         self.assertEqual(active.status_code, 200)
         active_body = active.get_json()
