@@ -1,4 +1,4 @@
-﻿# 装箱装托系统开发计划（docs/dev-plan）
+# 装箱装托系统开发计划（docs/dev-plan）
 
 ## 1. 计划范围与依据
 1. 依据文档：`soft.md`（V3.0）与 `skill.md`。
@@ -73,7 +73,7 @@
 | W6-01 | `list.html` 接口化（OK） | `demo/list.js` 改造 | 真实任务列表可展示与筛选 | W5-01 | FE |
 | W6-02 | `detail.html` 接口化（OK） | `demo/detail.js` 改造 | 可查看候选方案与指标 | W5-03 | FE |
 | W6-03 | `rules.html` 接口化（OK） | `demo/rules.js` 改造 | 规则可查询与导入 | W2-02~04 | FE |
-| W6-04 | `overview.html` 任务联动 | `demo/script.js` 改造 | 汇总页可展示真实任务数据 | W5-03 | FE |
+| W6-04 | `overview.html` 任务联动（OK） | `demo/script.js` 改造 | 汇总页可展示真实任务数据 | W5-03 | FE |
 
 ### 第7周：导出模板与3D联动
 | 任务ID | 任务 | 输出物 | 验收标准 | 依赖 | 负责人 |
@@ -126,3 +126,4 @@
 后续开发会统一使用中文注释
 每次完成修改后就提交代码到github上
 每完成一周的任务，就在开发计划中加上为ok，表示已经完成
+
