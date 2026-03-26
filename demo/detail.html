@@ -20,7 +20,8 @@
         <a href="./list.html">列表页</a>
         <a class="active" href="./detail.html">详情页</a>
         <a href="./rules.html">规则页</a>
-        <a href="./overview.html">汇总页</a>`r`n      </nav>
+        <a href="./overview.html">汇总页</a>
+      </nav>
       <div class="sidebar-foot">支持 3D 视图切换与筛选</div>
     </aside>
 
@@ -37,10 +38,16 @@
       </section>
 
       <section class="card">
+        <h3 style="margin-top:0;">方案明细（装箱 + 装托）</h3>
+        <div id="planTableWrap" class="plan-table-wrap"></div>
+      </section>
+
+      <section class="card">
         <div class="row" style="margin-bottom:10px;">
           <select id="planSelect"></select>
           <select id="modelFilter"></select>
           <select id="specFilter"></select>
+          <select id="cartonFilter"></select>
           <button id="reset3dFilters" class="ghost">重置 3D 筛选</button>
           <button id="viewPackingBtn">装箱视图</button>
           <button id="viewPalletBtn" class="primary">装托视图</button>
@@ -54,15 +61,36 @@
           <aside class="legend">
             <h4>操作说明</h4>
             <ul>
-              <li>左键：旋转</li>
+              <li>左键拖动：旋转视角</li>
               <li>滚轮：缩放</li>
-              <li>右键：平移</li>
+              <li>右键拖动：平移</li>
               <li>双击空白：重置视角</li>
             </ul>
             <h4>当前场景</h4>
             <p id="sceneMeta">-</p>
-            <h4 style="margin-top:10px;">标记规则</h4>
-            <p>内盒标签：型号；外箱标签：规格 + 内含型号集合。</p>
+            <h4 style="margin-top:10px;">箱号信息</h4>
+            <p id="cartonInfo">请选择箱号查看明细</p>
+            <h4 style="margin-top:10px;">假数据说明</h4>
+            <p>装箱展示外箱与内盒型号；装托突出竖放外箱（橙色/红色标签）。</p>
+            <div class="viewer-filters">
+              <label for="packingBoxSelect">装箱筛选（单箱）</label>
+              <select id="packingBoxSelect"></select>
+              <label for="palletSelect">装托筛选（单托）</label>
+              <select id="palletSelect"></select>
+              <label for="labelScaleSelect">型号标签放大倍数</label>
+              <select id="labelScaleSelect">
+                <option value="1">1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2" selected>2x</option>
+                <option value="3">3x</option>
+              </select>
+              <label for="labelModeSelect">标签模式</label>
+              <select id="labelModeSelect">
+                <option value="sparse" selected>稀疏</option>
+                <option value="all">全部</option>
+                <option value="top">仅顶层</option>
+              </select>
+            </div>
           </aside>
         </div>
       </section>
@@ -75,6 +103,7 @@
         <article class="card">
           <h3 style="margin-top:0;">订单组合</h3>
           <p id="ordersText"></p>
+          <div class="row" id="metricScopeSwitch" style="justify-content:flex-end; margin:8px 0;"></div>
           <table>
             <thead>
               <tr>
@@ -96,5 +125,3 @@
   <script src="./detail.js"></script>
 </body>
 </html>
-
-

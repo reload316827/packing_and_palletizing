@@ -332,6 +332,75 @@ th {
   font-size: 13px;
 }
 
+.viewer-filters {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.viewer-filters label {
+  font-size: 12px;
+  color: #475569;
+}
+
+.viewer-filters select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 7px 9px;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.quick-scale-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.quick-scale-btn {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f8fbff;
+  color: #1e293b;
+}
+
+.quick-scale-btn.active {
+  border-color: #0f766e;
+  background: #e6fffb;
+  color: #0f766e;
+}
+
+.hidden {
+  display: none;
+}
+
+.output-panel {
+  border-color: #cfe2f3;
+  background: linear-gradient(180deg, #ffffff, #f8fcff);
+}
+
+.output-panel h4 {
+  margin: 14px 0 8px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.summary-line {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  padding: 8px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
 .toast {
   position: fixed;
   right: 18px;

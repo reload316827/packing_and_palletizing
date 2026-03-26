@@ -1,20 +1,15 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from openpyxl import load_workbook
+try:
+    # .xls 旧格式依赖 xlrd；若环境未安装，允许服务启动，延迟到实际读取时再提示。
+    import xlrd  # type: ignore
+except Exception:
+    xlrd = None
 
 
-def load_box_rules(file_path):
-    # 读取“型号-内盒”规则（当前仅支持 .xlsx）
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError("rule file not found: {0}".format(path))
-
-    suffix = path.suffix.lower()
-    if suffix == ".xls":
-        raise RuntimeError("Direct .xls parsing is not enabled in this scaffold. Convert to .xlsx first.")
-    if suffix != ".xlsx":
-        raise RuntimeError("unsupported file type: {0}".format(suffix))
-
+def _load_xlsx_rules(path):
+    # .xlsx：遍历全部 sheet，按首行表头构建规则记录。
     workbook = load_workbook(path, data_only=True)
     all_rules = []
     for sheet_name in workbook.sheetnames:
@@ -34,4 +29,48 @@ def load_box_rules(file_path):
             record["source_sheet"] = sheet_name
             record["source_row"] = idx
             all_rules.append(record)
+    workbook.close()
     return all_rules
+
+
+def _load_xls_rules(path):
+    if xlrd is None:
+        # 仅在真的读取 .xls 时才报依赖错误，避免启动阶段崩溃。
+        raise RuntimeError("xlrd is required to parse .xls rule files. Install xlrd or provide 装箱.xlsx.")
+    workbook = xlrd.open_workbook(str(path))
+    all_rules = []
+    for sheet in workbook.sheets():
+        if sheet.nrows <= 0:
+            continue
+        headers = [
+            str(sheet.cell_value(0, col)).strip()
+            if sheet.cell_value(0, col) is not None
+            else ""
+            for col in range(sheet.ncols)
+        ]
+        for row_idx in range(1, sheet.nrows):
+            row_values = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
+            if not any(str(cell).strip() for cell in row_values):
+                continue
+            record = {
+                headers[col] or "col_{0}".format(col + 1): row_values[col]
+                for col in range(len(row_values))
+            }
+            record["source_sheet"] = sheet.name
+            record["source_row"] = row_idx + 1
+            all_rules.append(record)
+    return all_rules
+
+
+def load_box_rules(file_path):
+    # 读取“型号-内盒”规则（支持 .xlsx / .xls），供规则快照导入与自动同步复用。
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError("rule file not found: {0}".format(path))
+
+    suffix = path.suffix.lower()
+    if suffix == ".xlsx":
+        return _load_xlsx_rules(path)
+    if suffix == ".xls":
+        return _load_xls_rules(path)
+    raise RuntimeError("unsupported file type: {0}".format(suffix))

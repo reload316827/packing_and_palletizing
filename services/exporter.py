@@ -1,12 +1,11 @@
 from pathlib import Path
 from urllib.parse import quote
 
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
+from openpyxl.cell.cell import MergedCell
 
 from core.db import PROJECT_ROOT, get_conn
 from core.errors import AppError
-
-_TEMPLATE_HINTS = ("导出模板", "模板", "template", "export")
 
 
 def _safe_name(text):
@@ -50,41 +49,17 @@ def _pick_solution_id(conn, plan_id, solution_id):
     return int(row["id"])
 
 
-def _resolve_template_path(template_path):
-    if template_path:
-        candidate = Path(str(template_path).strip())
-        if candidate.is_file():
-            return candidate
-        project_candidate = PROJECT_ROOT / str(template_path).strip()
-        if project_candidate.is_file():
-            return project_candidate
-
-    candidates = [
-        p
-        for p in PROJECT_ROOT.glob("*.xlsx")
-        if p.is_file() and not p.name.startswith("~$")
-    ]
-    if not candidates:
-        return None
-
-    hinted = [
-        p
-        for p in candidates
-        if any(keyword.lower() in p.name.lower() for keyword in _TEMPLATE_HINTS)
-    ]
-    if hinted:
-        return max(hinted, key=lambda p: p.stat().st_size)
-
-    return max(candidates, key=lambda p: p.stat().st_size)
-
-
 def _write_row(ws, row_idx, values):
     for col_idx, value in enumerate(values, start=1):
-        ws.cell(row=row_idx, column=col_idx, value=value)
+        cell = ws.cell(row=row_idx, column=col_idx)
+        # 模板中可能预置合并单元格；若命中非左上角 merged cell，直接跳过，避免导出异常
+        if isinstance(cell, MergedCell):
+            continue
+        cell.value = value
 
 
 def export_plan_excel(plan_id, solution_id=None, template_path=None, output_dir=None):
-    # 导出模板映射：A1/A3/A4/N4 + 明细区 + 拼箱合并 + 装托分段汇总
+    # 直接导出（不读取导出模板）：A1/A3/A4/N4 + 明细区 + 拼箱合并 + 装托分段汇总
     with get_conn() as conn:
         plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         if not plan:
@@ -112,14 +87,9 @@ def export_plan_excel(plan_id, solution_id=None, template_path=None, output_dir=
             (plan_id, selected_solution_id),
         ).fetchall()
 
-    template = _resolve_template_path(template_path)
-    if template:
-        workbook = load_workbook(str(template))
-        ws = workbook[workbook.sheetnames[0]]
-    else:
-        workbook = Workbook()
-        ws = workbook.active
-        ws.title = "导出结果"
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "导出结果"
 
     order_nos = sorted({str(row["order_no"] or "") for row in box_rows if row["order_no"]})
     contract_no = "+".join(order_nos) or "-"

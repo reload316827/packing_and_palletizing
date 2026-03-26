@@ -39,7 +39,7 @@
           <button data-demo-btn>导入订单 Excel</button>
           <button data-demo-btn>生成 3 套方案</button>
           <button data-demo-btn>上传最终 Excel</button>
-          <button class="primary" data-demo-btn>导出装箱装托单</button>
+          <button class="primary" id="showOutputBtn">输出内容模板预览</button>
         </div>
       </header>
 
@@ -83,6 +83,19 @@
           <button data-demo-btn>一键对比</button>
         </div>
         <div class="solution-grid" id="solutionGrid"></div>
+      </section>
+
+      <section class="card panel output-panel hidden" id="outputPanel">
+        <div class="panel-head">
+          <h3>输出内容 Demo（模板表格）</h3>
+          <div class="inline-actions">
+            <button id="downloadOutputBtn">下载XLSX</button>
+            <button id="hideOutputBtn">收起模板</button>
+          </div>
+        </div>
+        <table>
+          <tbody id="outputTemplateBody"></tbody>
+        </table>
       </section>
 
       <section class="panel-grid two-col">
@@ -143,7 +156,27 @@
               <li>双击空白：重置视角</li>
             </ul>
             <h4>假数据说明</h4>
-            <p id="sceneMeta">当前：装托视图（2 托盘 / 混合外箱规格，外箱标签显示内含型号集合）</p>
+            <p id="sceneMeta">当前：装托视图（支持单托查看；每个外箱标记型号；平放+竖放混排，竖放箱橙色标识）</p>
+            <div class="viewer-filters">
+              <label for="packingBoxSelect">装箱筛选（单箱）</label>
+              <select id="packingBoxSelect"></select>
+              <label for="palletSelect">装托筛选（单托）</label>
+              <select id="palletSelect"></select>
+              <label for="labelScaleSelect">型号标签放大倍数</label>
+              <select id="labelScaleSelect">
+                <option value="1">1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2" selected>2x</option>
+                <option value="3">3x</option>
+                <option value="4">4x</option>
+              </select>
+              <label for="labelModeSelect">标签模式</label>
+              <select id="labelModeSelect">
+                <option value="sparse" selected>稀疏</option>
+                <option value="all">全部</option>
+                <option value="top">仅顶层</option>
+              </select>
+            </div>
           </aside>
         </div>
       </section>
@@ -151,6 +184,7 @@
   </div>
 
   <div class="toast" id="toast">Demo 模式：未接入实际处理逻辑</div>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="./vendor/three.min.js"></script>
   <script src="./vendor/OrbitControls.js"></script>
   <script src="./script.js"></script>

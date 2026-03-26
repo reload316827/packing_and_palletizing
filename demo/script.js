@@ -817,6 +817,7 @@ function createInteractive3DViewer() {
   const palletSelect = document.getElementById("palletSelect");
   const labelScaleSelect = document.getElementById("labelScaleSelect");
   const labelModeSelect = document.getElementById("labelModeSelect");
+  const labelScaleSteps = [1, 1.5, 2, 3, 4];
 
   if (!container || !window.THREE || !THREE.OrbitControls) {
     if (meta) {
@@ -981,6 +982,66 @@ function createInteractive3DViewer() {
     return ["sparse", "all", "top"].includes(mode) ? mode : "sparse";
   }
 
+  function updateLabelScaleQuickButtons() {
+    if (!container) return;
+    const quickBtns = container.parentElement
+      ? container.parentElement.querySelectorAll(".quick-scale-btn")
+      : [];
+    const current = getModelLabelScale();
+    quickBtns.forEach(btn => {
+      const action = btn.getAttribute("data-action");
+      if (action === "reset") {
+        btn.classList.toggle("active", current === 2);
+      } else if (action === "max") {
+        btn.classList.toggle("active", current >= 4);
+      }
+    });
+  }
+
+  function setLabelScale(value) {
+    if (!labelScaleSelect) return;
+    labelScaleSelect.value = String(value);
+    setViewMode(currentMode);
+    updateLabelScaleQuickButtons();
+  }
+
+  function bumpLabelScale(step) {
+    if (!labelScaleSelect) return;
+    const current = getModelLabelScale();
+    const index = labelScaleSteps.findIndex(item => item === current);
+    const fallbackIndex = index >= 0
+      ? index
+      : labelScaleSteps.reduce((best, value, idx) => (
+        Math.abs(value - current) < Math.abs(labelScaleSteps[best] - current) ? idx : best
+      ), 0);
+    const nextIndex = Math.max(0, Math.min(labelScaleSteps.length - 1, fallbackIndex + step));
+    setLabelScale(labelScaleSteps[nextIndex]);
+  }
+
+  function injectQuickScaleControls() {
+    if (!labelScaleSelect || !labelScaleSelect.parentElement) return;
+    if (labelScaleSelect.parentElement.querySelector(".quick-scale-row")) return;
+    const row = document.createElement("div");
+    row.className = "quick-scale-row";
+    row.innerHTML = `
+      <button type="button" class="quick-scale-btn" data-action="minus">字号-</button>
+      <button type="button" class="quick-scale-btn" data-action="plus">字号+</button>
+      <button type="button" class="quick-scale-btn" data-action="max">4x</button>
+      <button type="button" class="quick-scale-btn" data-action="reset">2x</button>
+    `;
+    row.addEventListener("click", event => {
+      const btn = event.target.closest(".quick-scale-btn");
+      if (!btn) return;
+      const action = btn.getAttribute("data-action");
+      if (action === "minus") bumpLabelScale(-1);
+      if (action === "plus") bumpLabelScale(1);
+      if (action === "max") setLabelScale(4);
+      if (action === "reset") setLabelScale(2);
+    });
+    labelScaleSelect.insertAdjacentElement("afterend", row);
+    updateLabelScaleQuickButtons();
+  }
+
   function applyDefaultCameraPose(mode) {
     if (mode === "packing") {
       const isSingle = packingBoxSelect && packingBoxSelect.value !== "ALL";
@@ -1081,6 +1142,18 @@ function createInteractive3DViewer() {
             maxLayerH = Math.max(maxLayerH, box.h);
 
             addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: box.color });
+            if (isUpright) {
+              addBox(group, {
+                x,
+                y: y + box.h / 2 + 1.3,
+                z,
+                w: Math.max(6, box.w * 0.32),
+                h: 1.3,
+                d: Math.max(6, box.d * 0.32),
+                color: 0xdc2626,
+                opacity: 0.95
+              });
+            }
             const isTopLayer = layer === layerPatterns.length - 1;
             const showLabel = labelMode === "all"
               ? true
@@ -1136,9 +1209,16 @@ function createInteractive3DViewer() {
       });
 
       createLabel(group, `${box.id}\\n${box.spec}`, xBase, outerY + box.h / 2 + 6.4, zBase, {
-        scaleX: 20,
-        scaleY: 6.3,
-        fontSize: 18
+        scaleX: Math.min(34, 20 + 5.5 * (labelScale - 1)),
+        scaleY: Math.min(10, 6.3 + 1.8 * (labelScale - 1)),
+        fontSize: Math.min(28, Math.round(18 + 3 * (labelScale - 1)))
+      });
+
+      createLabel(group, `型号:${box.models.join("+")}`, xBase, outerY + box.h / 2 + 1.2, zBase - box.d * 0.33, {
+        scaleX: Math.min(26, 15 + 4.5 * (labelScale - 1)),
+        scaleY: Math.min(8, 4.2 + 1.4 * (labelScale - 1)),
+        fontSize: Math.min(22, Math.round(14 + 3 * (labelScale - 1))),
+        bg: "rgba(15, 23, 42, 0.78)"
       });
 
       const { cols: innerCols, rows: innerRows, layers } = box.grid;
@@ -1251,6 +1331,7 @@ function createInteractive3DViewer() {
   if (labelScaleSelect) {
     labelScaleSelect.addEventListener("change", () => {
       setViewMode(currentMode);
+      updateLabelScaleQuickButtons();
     });
   }
 
@@ -1264,6 +1345,17 @@ function createInteractive3DViewer() {
   btnPallet.addEventListener("click", () => setViewMode("pallet"));
 
   window.addEventListener("resize", resizeRenderer);
+  window.addEventListener("keydown", event => {
+    if (!labelScaleSelect) return;
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      bumpLabelScale(1);
+    } else if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      bumpLabelScale(-1);
+    }
+  });
+  injectQuickScaleControls();
   resizeRenderer();
   setViewMode("pallet");
   animate();

@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.db import get_conn
 from core.errors import AppError
@@ -46,8 +46,35 @@ def _parse_time_or_now(value):
     if value and str(value).strip():
         try:
             # 支持 '2026-03-24T12:00:00+00:00' / '2026-03-24T12:00:00Z'
-            text = str(value).replace("Z", "+00:00")
-            return datetime.fromisoformat(text).isoformat()
+            text = str(value).strip()
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            if len(text) >= 6 and text[-6] in ("+", "-") and text[-3] == ":":
+                text = text[:-3] + text[-2:]
+
+            dt = None
+            for fmt in (
+                "%Y-%m-%dT%H:%M:%S.%f%z",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S.%f%z",
+                "%Y-%m-%d %H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M:%S",
+            ):
+                try:
+                    dt = datetime.strptime(text, fmt)
+                    break
+                except Exception:
+                    continue
+            if dt is None:
+                raise ValueError("unsupported datetime format")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return dt.replace(microsecond=0).isoformat()
         except Exception:
             pass
     return utc_now_iso()
@@ -352,7 +379,24 @@ def get_active_snapshot(snapshot_type, at_time=None):
         ).fetchone()
 
         if not activation:
-            return {"snapshot_type": snapshot_type, "active_snapshot": None, "at_time": at_time_iso}
+            # 若未配置生效时间，回退到该类型最新导入版本，避免计算链路使用空规则全量兜底。
+            latest_snapshot = conn.execute(
+                """
+                SELECT *
+                FROM rule_snapshot
+                WHERE snapshot_type = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (snapshot_type,),
+            ).fetchone()
+            return {
+                "snapshot_type": snapshot_type,
+                "active_snapshot": dict(latest_snapshot) if latest_snapshot else None,
+                "at_time": at_time_iso,
+                "activation": None,
+                "fallback_latest_snapshot": True if latest_snapshot else False,
+            }
 
         snapshot = conn.execute(
             "SELECT * FROM rule_snapshot WHERE id = ?",
