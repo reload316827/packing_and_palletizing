@@ -175,10 +175,7 @@ def _is_complete_box_rule(row):
     return bool(inner_box_spec) and qty_per_carton is not None and gross_weight_kg is not None
 
 
-def _calc_missing_models(conn, plan_id, ship_date):
-    order_models = _get_plan_models(conn, plan_id)
-    if not order_models:
-        return []
+def _split_active_rule_coverage(ship_date):
     active_rules = get_active_box_rule_bundle(ship_date).get("rules") or []
     active_complete = set()
     active_incomplete = set()
@@ -190,6 +187,18 @@ def _calc_missing_models(conn, plan_id, ship_date):
             active_complete.add(model_code)
         else:
             active_incomplete.add(model_code)
+    return active_complete, active_incomplete
+
+
+def _calc_missing_models(conn, plan_id, ship_date, active_coverage=None):
+    order_models = _get_plan_models(conn, plan_id)
+    if not order_models:
+        return []
+
+    if active_coverage is None:
+        active_complete, active_incomplete = _split_active_rule_coverage(ship_date)
+    else:
+        active_complete, active_incomplete = active_coverage
 
     manual_complete, manual_incomplete = _get_manual_models(conn, plan_id)
     covered_complete = active_complete.union(manual_complete)
@@ -215,6 +224,7 @@ def list_plans():
 
     with get_conn() as conn:
         rows = conn.execute(sql, tuple(args)).fetchall()
+        active_coverage_cache = {}
         plans = []
         for row in rows:
             plan = _row_to_dict(row)
@@ -245,7 +255,10 @@ def list_plans():
             plan["summary_box_count"] = int(summary_solution["box_count"]) if summary_solution else 0
             plan["summary_pallet_count"] = int(summary_solution["pallet_count"]) if summary_solution else 0
             plan["summary_weight_kg"] = float(summary_solution["gross_weight_kg"]) if summary_solution else 0.0
-            missing_models = _calc_missing_models(conn, plan["id"], plan["ship_date"])
+            ship_date = str(plan.get("ship_date") or "")
+            if ship_date not in active_coverage_cache:
+                active_coverage_cache[ship_date] = _split_active_rule_coverage(ship_date)
+            missing_models = _calc_missing_models(conn, plan["id"], ship_date, active_coverage_cache[ship_date])
             plan["missing_model_count"] = len(missing_models)
             plan["has_missing_data"] = True if missing_models else False
             plans.append(plan)
