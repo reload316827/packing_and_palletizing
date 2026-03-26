@@ -111,6 +111,52 @@ def _build_order_lines(orders):
     return result
 
 
+def _load_manual_box_overrides(conn, plan_id):
+    rows = conn.execute(
+        """
+        SELECT model_code, inner_box_spec, qty_per_carton, gross_weight_kg
+        FROM plan_manual_box_rule
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _normalize_inner_box_code(value):
+    return str(value or "").strip().split("*")[0].strip()
+
+
+def _build_inner_box_capacity_options(pallet_rules):
+    options = defaultdict(set)
+    for row in pallet_rules or []:
+        inner_box_code = _normalize_inner_box_code(
+            row.get("inner_box_code") or row.get("inner_box_spec") or row.get("内盒编号") or row.get("编号")
+        )
+        if not inner_box_code:
+            continue
+        carton_qty = row.get("carton_qty") or row.get("一箱总数/只") or row.get("一箱总数")
+        try:
+            qty = int(float(str(carton_qty)))
+        except (TypeError, ValueError):
+            qty = 0
+        if qty > 0:
+            options[inner_box_code].add(qty)
+    return {key: sorted(values) for key, values in options.items()}
+
+
+def _attach_capacity_options(box_rules, pallet_rules):
+    # 型号-内盒仅保留型号/毛重/内盒时，容量由托盘规则候选动态补全
+    capacity_map = _build_inner_box_capacity_options(pallet_rules)
+    attached = []
+    for row in box_rules or []:
+        item = dict(row)
+        inner_box_code = _normalize_inner_box_code(item.get("inner_box_spec"))
+        item["qty_options"] = capacity_map.get(inner_box_code, [])
+        attached.append(item)
+    return attached
+
+
 def _is_merge_enabled(merge_mode):
     text = str(merge_mode or "").strip().upper()
     return text in {"MERGE", "合并"}
@@ -329,6 +375,20 @@ def _calculate_plan_impl(plan_id):
         order_lines = _build_order_lines(orders)
         box_rule_bundle = get_active_box_rule_bundle(plan["ship_date"])
         pallet_rule_bundle = get_active_pallet_rule_bundle(plan["ship_date"])
+        manual_box_rules = _load_manual_box_overrides(conn, plan_id)
+        if manual_box_rules:
+            # 手工补录规则优先级高于基础规则：同型号覆盖。
+            base_rules = box_rule_bundle["rules"] or []
+            merged = {str(row.get("model_code") or "").strip(): dict(row) for row in base_rules}
+            for row in manual_box_rules:
+                model_code = str(row.get("model_code") or "").strip()
+                if model_code:
+                    merged[model_code] = dict(row)
+            box_rule_bundle["rules"] = [item for item in merged.values() if str(item.get("model_code") or "").strip()]
+        box_rule_bundle["rules"] = _attach_capacity_options(
+            box_rules=box_rule_bundle["rules"] or [],
+            pallet_rules=pallet_rule_bundle["rules"] or [],
+        )
 
         if _is_merge_enabled(plan["merge_mode"]):
             packing_result = solve_packing(order_lines=order_lines, rules=box_rule_bundle["rules"])

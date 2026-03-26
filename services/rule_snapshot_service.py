@@ -191,15 +191,15 @@ def import_box_rules_to_snapshot(file_path):
     normalized_rows = []
     with get_conn() as conn:
         for row in rules:
+            # 型号-内盒导入字段收敛为：型号 + 内盒 + 毛重（不再导入装箱容量）
             model_code = _first_non_empty(row, ["型号", "ZNP编号", "CODE NO.", "model", "编号"])
             inner_box_spec = _first_non_empty(row, ["内盒", "inner_box_spec", "内盒规格"])
-            qty_per_carton = _to_int(_first_non_empty(row, ["数量", "qty_per_carton", "一箱总数/只"]))
             gross_weight_kg = _to_float(_first_non_empty(row, ["毛重", "gross_weight_kg", "毛重(kg)"]))
 
             normalized = {
                 "model_code": str(model_code).strip() if model_code is not None else None,
                 "inner_box_spec": str(inner_box_spec).strip() if inner_box_spec is not None else None,
-                "qty_per_carton": qty_per_carton,
+                "qty_per_carton": None,
                 "gross_weight_kg": gross_weight_kg,
             }
             normalized_rows.append(normalized)
@@ -214,7 +214,7 @@ def import_box_rules_to_snapshot(file_path):
                     snapshot_id,
                     normalized["model_code"],
                     normalized["inner_box_spec"],
-                    normalized["qty_per_carton"],
+                    None,
                     normalized["gross_weight_kg"],
                     json.dumps(row, ensure_ascii=False),
                     created_at,
