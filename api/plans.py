@@ -96,6 +96,130 @@ def _insert_plan_with_orders(conn, payload, created_at, actor):
     return plan_id
 
 
+def _ensure_active_box_snapshot(conn, now):
+    # 读取当前生效的箱规快照；若不存在则创建手工同步快照并立即生效
+    activation = conn.execute(
+        """
+        SELECT rsa.snapshot_id
+        FROM rule_snapshot_activation rsa
+        JOIN rule_snapshot rs ON rs.id = rsa.snapshot_id
+        WHERE rsa.snapshot_type = 'box' AND rs.snapshot_type = 'box' AND rsa.effective_from <= ?
+        ORDER BY rsa.effective_from DESC, rsa.id DESC
+        LIMIT 1
+        """,
+        (now,),
+    ).fetchone()
+    if activation:
+        return int(activation["snapshot_id"])
+
+    latest = conn.execute(
+        """
+        SELECT id
+        FROM rule_snapshot
+        WHERE snapshot_type = 'box'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if latest:
+        return int(latest["id"])
+
+    version = "manual_sync_{0}".format(now.replace("-", "").replace(":", "").replace(".", ""))
+    snapshot_id = conn.execute(
+        """
+        INSERT INTO rule_snapshot
+        (snapshot_type, source_file, version, record_count, payload_preview, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        ("box", "manual_missing_data", version, 0, "{}", now),
+    ).lastrowid
+    conn.execute(
+        """
+        INSERT INTO rule_snapshot_activation
+        (snapshot_type, snapshot_id, effective_from, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        ("box", snapshot_id, now, now),
+    )
+    return int(snapshot_id)
+
+
+def _sync_manual_rules_to_rule_page(conn, rules, now):
+    # 将详情页补录同步到规则页使用的箱规快照：同型号更新，不存在新增
+    snapshot_id = _ensure_active_box_snapshot(conn, now)
+    synced = 0
+    for row in rules:
+        model_code = str((row or {}).get("model_code") or "").strip()
+        inner_box_spec = str((row or {}).get("inner_box_spec") or "").strip()
+        if not model_code or not inner_box_spec:
+            continue
+
+        qty_per_carton = row.get("qty_per_carton")
+        gross_weight_kg = row.get("gross_weight_kg")
+        try:
+            qty_per_carton = int(float(str(qty_per_carton))) if qty_per_carton not in (None, "") else None
+        except (TypeError, ValueError):
+            qty_per_carton = None
+        try:
+            gross_weight_kg = float(str(gross_weight_kg)) if gross_weight_kg not in (None, "") else None
+        except (TypeError, ValueError):
+            gross_weight_kg = None
+
+        raw_payload = json.dumps(
+            {
+                "model_code": model_code,
+                "inner_box_spec": inner_box_spec,
+                "qty_per_carton": qty_per_carton,
+                "gross_weight_kg": gross_weight_kg,
+                "sync_source": "plan_missing_data",
+                "sync_at": now,
+            },
+            ensure_ascii=False,
+        )
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM rule_model_inner_box
+            WHERE snapshot_id = ? AND model_code = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (snapshot_id, model_code),
+        ).fetchone()
+
+        if existing:
+            conn.execute(
+                """
+                UPDATE rule_model_inner_box
+                SET inner_box_spec = ?, qty_per_carton = ?, gross_weight_kg = ?, raw_payload = ?
+                WHERE id = ? AND snapshot_id = ?
+                """,
+                (inner_box_spec, qty_per_carton, gross_weight_kg, raw_payload, existing["id"], snapshot_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO rule_model_inner_box
+                (snapshot_id, model_code, inner_box_spec, qty_per_carton, gross_weight_kg, raw_payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (snapshot_id, model_code, inner_box_spec, qty_per_carton, gross_weight_kg, raw_payload, now),
+            )
+        synced += 1
+
+    # 同步后刷新快照记录数，避免规则页统计与数据不一致
+    count_row = conn.execute(
+        "SELECT COUNT(1) AS cnt FROM rule_model_inner_box WHERE snapshot_id = ?",
+        (snapshot_id,),
+    ).fetchone()
+    count_value = int(count_row["cnt"] if count_row else 0)
+    conn.execute(
+        "UPDATE rule_snapshot SET record_count = ? WHERE id = ?",
+        (count_value, snapshot_id),
+    )
+    return {"snapshot_id": snapshot_id, "synced_count": synced}
+
+
 def _get_plan_models(conn, plan_id):
     return set(_get_plan_model_stats(conn, plan_id).keys())
 
@@ -679,12 +803,23 @@ def save_plan_manual_rule(plan_id):
                     ),
                 )
             saved += 1
+        sync_result = _sync_manual_rules_to_rule_page(conn, rules, now)
 
     with get_conn() as conn:
         plan = conn.execute("SELECT ship_date FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
         remaining = _calc_missing_models(conn, plan_id, plan["ship_date"]) if plan else []
 
-    return jsonify({"plan_id": plan_id, "saved_count": saved, "remaining_missing_models": remaining}), 200
+    return (
+        jsonify(
+            {
+                "plan_id": plan_id,
+                "saved_count": saved,
+                "remaining_missing_models": remaining,
+                "rule_sync": sync_result,
+            }
+        ),
+        200,
+    )
 
 
 def _safe_file_name(name):

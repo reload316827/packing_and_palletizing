@@ -285,6 +285,101 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertTrue(body["has_missing_data"])
         self.assertIn("480", body["missing_models"])
 
+    def test_save_missing_data_should_sync_to_rule_page_snapshot(self):
+        payload = {
+            "customer_code": "CUST-SYNC",
+            "ship_date": "2999-02-01",
+            "merge_mode": "NO_MERGE",
+            "orders": [{"order_no": "ORD-SYNC-001", "model": "SYNC-001", "qty": 10}],
+        }
+        created = self.client.post("/api/plans", json=payload)
+        self.assertEqual(created.status_code, 201)
+        plan_id = created.get_json()["plan"]["id"]
+
+        now = utc_now_iso()
+        with get_conn() as conn:
+            snapshot_id = conn.execute(
+                """
+                INSERT INTO rule_snapshot
+                (snapshot_type, source_file, version, record_count, payload_preview, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("box", "tests_sync.xlsx", "box_test_sync", 1, "[]", now),
+            ).lastrowid
+            conn.execute(
+                """
+                INSERT INTO rule_model_inner_box
+                (snapshot_id, model_code, inner_box_spec, qty_per_carton, gross_weight_kg, raw_payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (snapshot_id, "SYNC-001", "OLD-BOX", 10, 1.2, "{}", now),
+            )
+            conn.execute(
+                """
+                INSERT INTO rule_snapshot_activation
+                (snapshot_type, snapshot_id, effective_from, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("box", snapshot_id, now, now),
+            )
+
+        saved = self.client.post(
+            "/api/plans/{0}/missing-data".format(plan_id),
+            json={
+                "box_rules": [
+                    {
+                        "model_code": "SYNC-001",
+                        "inner_box_spec": "NEW-BOX",
+                        "qty_per_carton": 25,
+                        "gross_weight_kg": 2.5,
+                    },
+                    {
+                        "model_code": "SYNC-NEW",
+                        "inner_box_spec": "BOX-NEW",
+                        "qty_per_carton": 40,
+                        "gross_weight_kg": 4.0,
+                    },
+                ]
+            },
+        )
+        self.assertEqual(saved.status_code, 200)
+        body = saved.get_json()
+        self.assertEqual(body["saved_count"], 2)
+        self.assertEqual(body["rule_sync"]["snapshot_id"], snapshot_id)
+        self.assertEqual(body["rule_sync"]["synced_count"], 2)
+
+        with get_conn() as conn:
+            existed = conn.execute(
+                """
+                SELECT inner_box_spec, qty_per_carton, gross_weight_kg
+                FROM rule_model_inner_box
+                WHERE snapshot_id = ? AND model_code = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (snapshot_id, "SYNC-001"),
+            ).fetchone()
+            added = conn.execute(
+                """
+                SELECT inner_box_spec, qty_per_carton, gross_weight_kg
+                FROM rule_model_inner_box
+                WHERE snapshot_id = ? AND model_code = ?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (snapshot_id, "SYNC-NEW"),
+            ).fetchone()
+
+        # 旧型号应被覆盖，新型号应新增到规则页对应快照
+        self.assertIsNotNone(existed)
+        self.assertIsNotNone(added)
+        self.assertEqual(existed["inner_box_spec"], "NEW-BOX")
+        self.assertEqual(int(existed["qty_per_carton"]), 25)
+        self.assertAlmostEqual(float(existed["gross_weight_kg"]), 2.5, places=6)
+        self.assertEqual(added["inner_box_spec"], "BOX-NEW")
+        self.assertEqual(int(added["qty_per_carton"]), 40)
+        self.assertAlmostEqual(float(added["gross_weight_kg"]), 4.0, places=6)
+
     def test_import_template_upload_auto_create_and_calculate(self):
         with tempfile.TemporaryDirectory(prefix="plan_import_") as temp_dir:
             file_path = os.path.join(temp_dir, "orders_import.xlsx")
