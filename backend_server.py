@@ -5,14 +5,12 @@ from api.plans import plans_bp
 from api.rules import rules_bp
 from core.db import init_db
 from core.errors import AppError
-from services.rule_auto_sync import start_rule_file_auto_sync
 
 
 def create_app():
     # 初始化 Flask 应用并注册路由
     app = Flask(__name__, static_folder="demo", static_url_path="/demo")
     init_db()
-    start_rule_file_auto_sync()
     app.register_blueprint(plans_bp)
     app.register_blueprint(rules_bp)
     app.register_blueprint(layout_bp)
