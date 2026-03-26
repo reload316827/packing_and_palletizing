@@ -454,7 +454,7 @@
   async function saveMissingDataAndRecalculate() {
     const rules = collectMissingDataForm();
     if (!rules.length) {
-      showToast("请先补录内盒编号和毛重后再保存");
+      showToast("请先补录内盒编号和只重后再保存");
       return;
     }
     if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = true;
