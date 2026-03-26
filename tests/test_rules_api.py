@@ -111,7 +111,7 @@ class RulesApiTestCase(unittest.TestCase):
 
         activated = self.client.post(
             "/api/rules/snapshots/{0}/activate".format(snapshot_id),
-            json={"effective_from": "2026-03-24T00:00:00+00:00"},
+            json={"effective_from": "2026-03-24T00:00:00.123Z"},
         )
         self.assertEqual(activated.status_code, 200)
 
@@ -120,6 +120,54 @@ class RulesApiTestCase(unittest.TestCase):
         active_body = active.get_json()
         self.assertIsNotNone(active_body["active_snapshot"])
         self.assertEqual(active_body["active_snapshot"]["id"], snapshot_id)
+
+    def test_update_active_rule_record(self):
+        # 验证激活规则可通过 API 直接修改并落库
+        tmp_dir = tempfile.mkdtemp(prefix="rule_edit_")
+        file_path = os.path.join(tmp_dir, "box_rules_edit.xlsx")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "rules"
+        ws.append(["model", "inner_box_spec", "qty_per_carton", "gross_weight_kg"])
+        ws.append(["UP-009", "105", 20, 12.5])
+        wb.save(file_path)
+        wb.close()
+
+        created = self.client.post("/api/rules/box/import", json={"file_path": file_path})
+        self.assertEqual(created.status_code, 201)
+        snapshot_id = created.get_json()["snapshot_id"]
+
+        activated = self.client.post(
+            "/api/rules/snapshots/{0}/activate".format(snapshot_id),
+            json={"effective_from": "2026-03-24T00:00:00.123Z"},
+        )
+        self.assertEqual(activated.status_code, 200)
+
+        detail = self.client.get("/api/rules/snapshots/{0}".format(snapshot_id))
+        self.assertEqual(detail.status_code, 200)
+        rows = detail.get_json()["records_preview"]
+        self.assertGreaterEqual(len(rows), 1)
+        record_id = rows[0]["id"]
+
+        updated = self.client.put(
+            "/api/rules/active/record",
+            json={
+                "snapshot_type": "box",
+                "snapshot_id": snapshot_id,
+                "record_id": record_id,
+                "updates": {
+                    "inner_box_spec": "205",
+                    "qty_per_carton": "66",
+                    "gross_weight_kg": "18.2",
+                },
+            },
+        )
+        self.assertEqual(updated.status_code, 200)
+        updated_row = updated.get_json()["record"]
+        self.assertEqual(str(updated_row["inner_box_spec"]), "205")
+        self.assertEqual(int(updated_row["qty_per_carton"]), 66)
+        self.assertAlmostEqual(float(updated_row["gross_weight_kg"]), 18.2, places=2)
 
 
 if __name__ == "__main__":
