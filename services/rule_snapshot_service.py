@@ -250,11 +250,25 @@ def import_pallet_rules_to_snapshot(file_path):
     normalized_rows = []
     with get_conn() as conn:
         for row in rules:
-            inner_box_code = _first_non_empty(row, ["编号", "inner_box_code", "内盒编号"])
-            carton_spec_cm = _first_non_empty(row, ["外箱规格/cm", "carton_spec_cm", "外箱规格"])
-            pallet_spec_cm = _first_non_empty(row, ["默认托盘规格/cm", "pallet_spec_cm"])
-            carton_qty = _to_int(_first_non_empty(row, ["一箱总数/只", "carton_qty", "总数"]))
-            pallet_carton_qty = _to_int(_first_non_empty(row, ["默认规格下一托外箱数", "pallet_carton_qty"]))
+            # 结构化字段用于求解；原始表的全部字段通过 raw_payload 完整保留。
+            inner_box_code = _first_non_empty(
+                row,
+                ["编号", "内盒编号", "inner_box_code", "内盒", "内盒规格", "inner_box_spec"],
+            )
+            carton_spec_cm = _first_non_empty(
+                row,
+                ["外箱规格/cm", "外箱规格(cm)", "外箱规格", "carton_spec_cm"],
+            )
+            pallet_spec_cm = _first_non_empty(
+                row,
+                ["默认托盘规格/cm", "默认托盘规格(cm)", "默认托盘规格", "pallet_spec_cm"],
+            )
+            carton_qty = _to_int(
+                _first_non_empty(row, ["一箱总数/只", "一箱总数", "carton_qty", "总数", "数量"])
+            )
+            pallet_carton_qty = _to_int(
+                _first_non_empty(row, ["默认规格下一托外箱数", "默认下一托外箱数", "pallet_carton_qty", "每托外箱数"])
+            )
 
             normalized = {
                 "inner_box_code": str(inner_box_code).strip() if inner_box_code is not None else None,
@@ -310,15 +324,27 @@ def get_snapshot_detail(snapshot_id):
                 "SELECT * FROM rule_model_inner_box WHERE snapshot_id = ? ORDER BY id ASC LIMIT 50",
                 (snapshot_id,),
             ).fetchall()
+            preview = [dict(row) for row in rows]
         else:
             rows = conn.execute(
                 "SELECT * FROM rule_inner_outer_pallet WHERE snapshot_id = ? ORDER BY id ASC LIMIT 50",
                 (snapshot_id,),
             ).fetchall()
+            preview = []
+            for row in rows:
+                record = dict(row)
+                raw = {}
+                try:
+                    raw = json.loads(record.get("raw_payload") or "{}")
+                except (TypeError, ValueError):
+                    raw = {}
+                merged = dict(raw)
+                merged.update(record)
+                preview.append(merged)
 
     return {
         "snapshot": dict(snapshot),
-        "records_preview": [dict(row) for row in rows],
+        "records_preview": preview,
     }
 
 
@@ -452,15 +478,35 @@ def get_active_pallet_rule_bundle(at_time=None):
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT inner_box_code, carton_spec_cm, pallet_spec_cm, carton_qty, pallet_carton_qty
+            SELECT inner_box_code, carton_spec_cm, pallet_spec_cm, carton_qty, pallet_carton_qty, raw_payload
             FROM rule_inner_outer_pallet
             WHERE snapshot_id = ?
             """,
             (snapshot_id,),
         ).fetchall()
 
+    full_rules = []
+    for row in rows:
+        record = dict(row)
+        raw = {}
+        try:
+            raw = json.loads(record.get("raw_payload") or "{}")
+        except (TypeError, ValueError):
+            raw = {}
+        merged = dict(raw)
+        merged.update(
+            {
+                "inner_box_code": record.get("inner_box_code"),
+                "carton_spec_cm": record.get("carton_spec_cm"),
+                "pallet_spec_cm": record.get("pallet_spec_cm"),
+                "carton_qty": record.get("carton_qty"),
+                "pallet_carton_qty": record.get("pallet_carton_qty"),
+            }
+        )
+        full_rules.append(merged)
+
     return {
         "snapshot_id": snapshot_id,
         "version": snapshot.get("version"),
-        "rules": [dict(row) for row in rows],
+        "rules": full_rules,
     }
