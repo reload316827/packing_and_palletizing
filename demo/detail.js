@@ -567,15 +567,24 @@
     `;
 
     const palletRows = [...byPallet.entries()].map(([palletId, list]) => {
-      const specs = uniqueSorted(list.map(item => item.spec)).join(" / ");
-      const models = uniqueSorted(list.flatMap(item => item.models)).join("+");
+      const specList = uniqueSorted(list.map(item => item.spec));
+      const specs = specList.join(" / ");
+      const modelList = uniqueSorted(list.flatMap(item => item.models));
+      const fullModels = modelList.join("、");
+      const previewModels = modelList.slice(0, 8).join("、");
+      const modelSummary = modelList.length > 8
+        ? `${previewModels} 等 ${modelList.length} 种`
+        : (previewModels || "-");
       const hasUpright = list.some(item => item.pose === "竖放");
       return `
         <tr>
           <td>${palletId}</td>
           <td>${list.length}</td>
           <td>${specs}</td>
-          <td>${models}</td>
+          <td class="model-summary-cell">
+            <div class="model-summary-main" title="${escapeHtml(fullModels)}">${escapeHtml(modelSummary)}</div>
+            ${modelList.length > 8 ? `<details class="model-summary-more"><summary>展开全部</summary><div class="model-summary-full">${escapeHtml(fullModels)}</div></details>` : ""}
+          </td>
           <td>${hasUpright ? "平放+竖放" : "平放"}</td>
         </tr>
       `;
@@ -588,7 +597,7 @@
           <p>竖放箱高亮展示</p>
         </div>
         <div class="plan-table-scroll">
-          <table>
+          <table class="pallet-table">
             <thead>
               <tr>
                 <th>托盘编号</th><th>外箱数</th><th>外箱规格</th><th>型号集合</th><th>摆放</th>
