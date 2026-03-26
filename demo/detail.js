@@ -152,12 +152,16 @@
     return map[text] || text || "-";
   }
 
-  function parseSpecToDims(specText) {
+  function parseSpecNumbers(specText, fallback = [56, 38, 29]) {
     const parts = String(specText || "")
       .split("*")
       .map(item => Number(String(item).trim()))
       .filter(item => Number.isFinite(item) && item > 0);
-    const [w, d, h] = parts.length === 3 ? parts : [56, 38, 29];
+    return parts.length === 3 ? parts : fallback;
+  }
+
+  function parseSpecToDims(specText) {
+    const [w, d, h] = parseSpecNumbers(specText, [56, 38, 29]);
     return { w: Math.max(16, Math.round(w * 0.9)), d: Math.max(14, Math.round(d * 0.9)), h: Math.max(12, Math.round(h * 0.85)) };
   }
 
@@ -189,12 +193,14 @@
       const spec = String(box.carton_spec_cm || "56*38*29");
       const dims = parseSpecToDims(spec);
       const models = (box.models || []).map(item => String(item));
+      const poseText = String(box.pose || "").toLowerCase();
       return {
         id: String(box.carton_id || `CARTON-${idx + 1}`),
         orderNo: String(box.order_no || "-"),
         palletId: String(box.pallet_id || `PALLET-${String((box.pallet_seq || 0) + 1).padStart(2, "0")}`),
         slotC: Number((box.row_seq || 0) % 4),
         slotR: Number(Math.floor(Number(box.row_seq || 0) / 4)),
+        rowSeq: Number(box.row_seq || idx),
         w: dims.w,
         h: dims.h,
         d: dims.d,
@@ -205,7 +211,9 @@
         models: models.length ? models : ["-"],
         grid: { cols: 3, rows: 2, layers: 2 },
         pattern: models.length ? models : ["-"],
-        pose: String(box.pose || "").toLowerCase() === "vertical" ? "竖放" : "平放",
+        pose: ["vertical", "upright", "stand"].includes(poseText) ? "竖放" : "平放",
+        usableSpec: String(box.usable_spec_cm || box.pallet_spec_cm || "108*108*90"),
+        palletSpec: String(box.pallet_spec_cm || "116*116*103"),
       };
     });
   }
@@ -273,6 +281,9 @@
   }
 
   function projectRowsBySolution(baseRows, solutionIndex) {
+    if (state.apiMode) {
+      return baseRows.map(item => ({ ...item }));
+    }
     const mapped = baseRows.map((item, idx) => {
       let pose = item.pose;
       if (solutionIndex === 0) {
@@ -1008,12 +1019,6 @@
       const maxRows = Math.max(1, Math.floor((board.depth - 24) / palletGapZ));
       const pageSize = maxCols * maxRows;
       const { pageItems: pagePallets, meta } = paginateItems("pallet", visiblePallets, pageSize);
-      const layerPatterns = [
-        ["F", "F", "U", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F", "F"],
-        ["F", "U", "F", "F", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F"],
-        ["F", "F", "F", "U", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F", "F", "F"],
-        ["U", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F", "F", "F", "F"],
-      ];
 
       const colsPerPage = Math.max(1, Math.min(maxCols, pagePallets.length || 1));
       const rowsPerPage = Math.max(1, Math.ceil((pagePallets.length || 1) / colsPerPage));
@@ -1023,108 +1028,97 @@
         const gridRow = Math.floor(displayIndex / colsPerPage);
         const xOffset = (gridCol - (colsPerPage - 1) / 2) * palletGapX;
         const zOffset = (gridRow - (rowsPerPage - 1) / 2) * palletGapZ;
-        const palletBoxes = displayRows.filter(item => item.palletId === palletId);
-        const toFlatDisplaySize = item => ({
-          w: Math.max(12, Math.min(23, Math.round(item.w * 0.45))),
-          d: Math.max(10, Math.min(21, Math.round(item.d * 0.43))),
-          h: Math.max(10, Math.min(16, Math.round(item.h * 0.4))),
-        });
-        const toUprightDisplaySize = item => ({
-          w: Math.max(10, Math.min(18, Math.round(item.w * 0.34))),
-          d: Math.max(9, Math.min(15, Math.round(item.d * 0.33))),
-          h: Math.max(14, Math.min(24, Math.round(item.h * 0.95))),
-        });
-        const flatCatalog = palletBoxes
-          .filter(item => item.pose !== "竖放")
-          .map(item => ({
-            ...toFlatDisplaySize(item),
-            models: item.models,
-            color: 0x60a5fa,
-          }));
-        const uprightCatalog = palletBoxes
-          .filter(item => item.pose === "竖放")
-          .map(item => ({
-            ...toUprightDisplaySize(item),
-            models: item.models,
-            color: 0xfb923c,
-          }));
-        if (!flatCatalog.length && palletBoxes.length) {
-          const fallback = palletBoxes[0];
-          flatCatalog.push({
-            ...toFlatDisplaySize(fallback),
-            models: fallback.models,
-            color: 0x60a5fa,
-          });
-        }
-        if (!uprightCatalog.length && palletBoxes.length) {
-          const fallback = palletBoxes[0];
-          uprightCatalog.push({
-            ...toUprightDisplaySize(fallback),
-            models: fallback.models,
-            color: 0xfb923c,
-          });
-        }
+        const palletBoxes = displayRows
+          .filter(item => item.palletId === palletId)
+          .sort((a, b) => Number(a.rowSeq || 0) - Number(b.rowSeq || 0));
+        const usableSpec = palletBoxes[0] ? String(palletBoxes[0].usableSpec || "108*108*90") : "108*108*90";
+        const [usableW, usableD] = parseSpecNumbers(usableSpec, [108, 108, 90]);
+        const palletW = Math.max(100, Math.round(usableW * 1.02));
+        const palletD = Math.max(90, Math.round(usableD * 1.02));
 
-        addBox(group, { x: xOffset, y: 6, z: zOffset, w: 122, h: 12, d: 110, color: 0x8d5524 });
+        addBox(group, { x: xOffset, y: 6, z: zOffset, w: palletW, h: 12, d: palletD, color: 0x8d5524 });
         createLabel(group, `${palletId}\\n${palletBoxes.length}箱`, xOffset, 16, zOffset - 66, { scaleX: 18, scaleY: 6, fontSize: 20 });
-        createLabel(group, "蓝色=平放  橙色=竖放", xOffset, 16, zOffset + 66, { scaleX: 24, scaleY: 5, fontSize: 18, bg: "rgba(30, 41, 59, 0.82)" });
+        createLabel(group, "蓝色=平放  橙色=竖放（按实际箱数）", xOffset, 16, zOffset + 66, { scaleX: 30, scaleY: 5, fontSize: 17, bg: "rgba(30, 41, 59, 0.82)" });
 
-        const cols = 4;
-        const rowsCount = 4;
-        const stepX = 27;
-        const stepZ = 24;
+        if (!palletBoxes.length) return;
+        const displayBoxes = palletBoxes.map(item => {
+          const isUpright = item.pose === "竖放";
+          if (isUpright) {
+            return {
+              ...item,
+              isUpright: true,
+              w: Math.max(10, Math.min(20, Math.round(item.w * 0.36))),
+              d: Math.max(9, Math.min(17, Math.round(item.d * 0.34))),
+              h: Math.max(16, Math.min(30, Math.round(item.h * 0.95))),
+              color: 0xfb923c,
+            };
+          }
+          return {
+            ...item,
+            isUpright: false,
+            w: Math.max(12, Math.min(26, Math.round(item.w * 0.45))),
+            d: Math.max(10, Math.min(24, Math.round(item.d * 0.43))),
+            h: Math.max(10, Math.min(18, Math.round(item.h * 0.4))),
+            color: 0x60a5fa,
+          };
+        });
+
+        const avgW = displayBoxes.reduce((sum, item) => sum + item.w, 0) / displayBoxes.length;
+        const avgD = displayBoxes.reduce((sum, item) => sum + item.d, 0) / displayBoxes.length;
+        const stepX = Math.max(16, Math.round(avgW + 3));
+        const stepZ = Math.max(14, Math.round(avgD + 3));
+        const cols = Math.max(1, Math.floor((palletW - 10) / stepX));
+        const rowsCount = Math.max(1, Math.floor((palletD - 10) / stepZ));
+        const layerCap = Math.max(1, cols * rowsCount);
+        const layerCount = Math.max(1, Math.ceil(displayBoxes.length / layerCap));
         const startX = xOffset - ((cols - 1) * stepX) / 2;
         const startZ = zOffset - ((rowsCount - 1) * stepZ) / 2;
-        let flatIdx = displayIndex;
-        let uprightIdx = displayIndex;
+        const layerHeights = Array.from({ length: layerCount }).map((_, layerIdx) => {
+          const begin = layerIdx * layerCap;
+          const chunk = displayBoxes.slice(begin, begin + layerCap);
+          return chunk.reduce((h, item) => Math.max(h, item.h), 10);
+        });
+
         let baseY = 12;
-
-        for (let layer = 0; layer < layerPatterns.length; layer += 1) {
-          const pattern = layerPatterns[layer];
-          let maxLayerH = 0;
-          for (let row = 0; row < rowsCount; row += 1) {
-            for (let col = 0; col < cols; col += 1) {
-              const cellIdx = row * cols + col;
-              const isUpright = pattern[cellIdx] === "U";
-              const box = isUpright
-                ? uprightCatalog[uprightIdx++ % uprightCatalog.length]
-                : flatCatalog[flatIdx++ % flatCatalog.length];
-              const x = startX + col * stepX;
-              const z = startZ + row * stepZ;
-              const y = baseY + box.h / 2 + 1;
-              maxLayerH = Math.max(maxLayerH, box.h);
-
-              addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: box.color });
-              if (isUpright) {
-                addBox(group, {
-                  x,
-                  y: y + box.h / 2 + 1.2,
-                  z,
-                  w: Math.max(6, box.w * 0.32),
-                  h: 1.2,
-                  d: Math.max(6, box.d * 0.32),
-                  color: 0xdc2626,
-                  opacity: 0.95,
-                });
-              }
-              const isTopLayer = layer === layerPatterns.length - 1;
-              const showLabel = labelMode === "all"
-                ? true
-                : labelMode === "top"
-                  ? isTopLayer
-                  : (isTopLayer && row % 2 === 0 && col % 2 === 0);
-              if (showLabel) {
-                createLabel(group, `${box.models.join("+")}${isUpright ? "\\n竖放" : ""}`, x, y + box.h / 2 + 4.6, z, {
-                  scaleX: 10.5 * labelScale,
-                  scaleY: 3.2 * labelScale,
-                  fontSize: Math.round(14 * labelScale),
-                  bg: isUpright ? "rgba(185, 28, 28, 0.86)" : "rgba(30, 41, 59, 0.78)",
-                  border: isUpright ? "rgba(252, 165, 165, 0.92)" : "rgba(148, 163, 184, 0.75)",
-                });
-              }
+        for (let layer = 0; layer < layerCount; layer += 1) {
+          const begin = layer * layerCap;
+          const chunk = displayBoxes.slice(begin, begin + layerCap);
+          chunk.forEach((box, chunkIdx) => {
+            const row = Math.floor(chunkIdx / cols);
+            const col = chunkIdx % cols;
+            const x = startX + col * stepX;
+            const z = startZ + row * stepZ;
+            const y = baseY + box.h / 2 + 1;
+            addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: box.color });
+            if (box.isUpright) {
+              addBox(group, {
+                x,
+                y: y + box.h / 2 + 1.2,
+                z,
+                w: Math.max(6, box.w * 0.32),
+                h: 1.2,
+                d: Math.max(6, box.d * 0.32),
+                color: 0xdc2626,
+                opacity: 0.95,
+              });
             }
-          }
-          baseY += maxLayerH + 1.5;
+            const isTopLayer = layer === layerCount - 1;
+            const showLabel = labelMode === "all"
+              ? true
+              : labelMode === "top"
+                ? isTopLayer
+                : (isTopLayer && row % 2 === 0 && col % 2 === 0);
+            if (showLabel) {
+              createLabel(group, `${box.models.join("+")}${box.isUpright ? "\\n竖放" : ""}`, x, y + box.h / 2 + 4.6, z, {
+                scaleX: 10.5 * labelScale,
+                scaleY: 3.2 * labelScale,
+                fontSize: Math.round(14 * labelScale),
+                bg: box.isUpright ? "rgba(185, 28, 28, 0.86)" : "rgba(30, 41, 59, 0.78)",
+                border: box.isUpright ? "rgba(252, 165, 165, 0.92)" : "rgba(148, 163, 184, 0.75)",
+              });
+            }
+          });
+          baseY += layerHeights[layer] + 1.5;
         }
       });
       return meta;
