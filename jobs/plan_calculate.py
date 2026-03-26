@@ -1,5 +1,6 @@
 import json
 import threading
+from collections import defaultdict
 
 from core.db import get_conn
 from core.errors import AppError
@@ -108,6 +109,74 @@ def _build_order_lines(orders):
             }
         )
     return result
+
+
+def _is_merge_enabled(merge_mode):
+    text = str(merge_mode or "").strip().upper()
+    return text in {"MERGE", "合并"}
+
+
+def _renumber_cartons(cartons):
+    # 合并多批结果后统一重排箱号，避免不同订单分组求解造成 carton_id 重复。
+    renumbered = []
+    for idx, carton in enumerate(cartons or [], start=1):
+        row = dict(carton)
+        row["carton_id"] = "CARTON-{0:04d}".format(idx)
+        renumbered.append(row)
+    return renumbered
+
+
+def _infer_carton_order_no(carton):
+    order_nos = set()
+    for item in carton.get("items") or []:
+        for ref in item.get("order_refs") or []:
+            if ref.get("order_no"):
+                order_nos.add(str(ref.get("order_no")))
+    if not order_nos:
+        return "ORDER-NA"
+    return sorted(order_nos)[0]
+
+
+def _build_packing_metrics(cartons):
+    mixed_count = sum(1 for carton in cartons if carton.get("mixed"))
+    side_carton_count = sum(1 for carton in cartons if int(carton.get("side_place_qty") or 0) > 0)
+    if mixed_count == 0:
+        mixing_level = "low"
+    elif mixed_count <= max(1, int(len(cartons) * 0.2)):
+        mixing_level = "medium"
+    else:
+        mixing_level = "high"
+    return {
+        "box_count": len(cartons),
+        "mixing_level": mixing_level,
+        "mixed_carton_count": mixed_count,
+        "side_place_carton_count": side_carton_count,
+    }
+
+
+def _renumber_pallets(pallets):
+    renumbered = []
+    for idx, pallet in enumerate(pallets or [], start=1):
+        row = dict(pallet)
+        row["pallet_id"] = "PALLET-{0:03d}".format(idx)
+        renumbered.append(row)
+    return renumbered
+
+
+def _build_pallet_metrics(pallets, exceptions):
+    total_weight = sum(float(item.get("total_weight_kg") or 0) for item in pallets)
+    upright_count = sum(int(item.get("upright_count") or 0) for item in pallets)
+    vertical_count = sum(int(item.get("vertical_count") or 0) for item in pallets)
+    custom_count = sum(1 for item in pallets if item.get("customized"))
+    return {
+        "pallet_count": len(pallets),
+        "total_weight_kg": round(total_weight, 2),
+        "upright_carton_count": upright_count,
+        "vertical_carton_count": vertical_count,
+        "customized_pallet_count": custom_count,
+        "unplaced_carton_count": len(exceptions or []),
+        "exceptions": exceptions or [],
+    }
 
 
 def _persist_solution_item_boxes(conn, plan_id, solution_id, cartons, rule_snapshot_id, rule_version, created_at):
@@ -261,11 +330,54 @@ def _calculate_plan_impl(plan_id):
         box_rule_bundle = get_active_box_rule_bundle(plan["ship_date"])
         pallet_rule_bundle = get_active_pallet_rule_bundle(plan["ship_date"])
 
-        packing_result = solve_packing(order_lines=order_lines, rules=box_rule_bundle["rules"])
-        pallet_result = solve_palletizing(
-            cartons=packing_result["cartons"],
-            rules=pallet_rule_bundle["rules"],
-        )
+        if _is_merge_enabled(plan["merge_mode"]):
+            packing_result = solve_packing(order_lines=order_lines, rules=box_rule_bundle["rules"])
+            pallet_result = solve_palletizing(
+                cartons=packing_result["cartons"],
+                rules=pallet_rule_bundle["rules"],
+            )
+        else:
+            # 不合并：不同订单之间禁止拼箱、禁止拼托。
+            order_groups = defaultdict(list)
+            for line in order_lines:
+                order_groups[str(line.get("order_no") or "ORDER-NA")].append(line)
+
+            combined_cartons = []
+            for order_no in sorted(order_groups.keys()):
+                partial = solve_packing(order_lines=order_groups[order_no], rules=box_rule_bundle["rules"])
+                for carton in partial["cartons"]:
+                    row = dict(carton)
+                    row["source_order_no"] = order_no
+                    combined_cartons.append(row)
+
+            combined_cartons = _renumber_cartons(combined_cartons)
+            packing_result = {
+                "cartons": combined_cartons,
+                "metrics": _build_packing_metrics(combined_cartons),
+            }
+
+            order_cartons = defaultdict(list)
+            for carton in combined_cartons:
+                order_cartons[_infer_carton_order_no(carton)].append(carton)
+
+            combined_pallets = []
+            all_exceptions = []
+            for order_no in sorted(order_cartons.keys()):
+                partial = solve_palletizing(
+                    cartons=order_cartons[order_no],
+                    rules=pallet_rule_bundle["rules"],
+                )
+                for pallet in partial["pallets"]:
+                    row = dict(pallet)
+                    row["source_order_no"] = order_no
+                    combined_pallets.append(row)
+                all_exceptions.extend(partial["metrics"].get("exceptions") or [])
+
+            combined_pallets = _renumber_pallets(combined_pallets)
+            pallet_result = {
+                "pallets": combined_pallets,
+                "metrics": _build_pallet_metrics(combined_pallets, all_exceptions),
+            }
 
         base_box_count = int(packing_result["metrics"].get("box_count") or 0)
         base_pallet_count = int(pallet_result["metrics"].get("pallet_count") or 0)

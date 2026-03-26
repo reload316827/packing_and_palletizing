@@ -10,7 +10,6 @@ from backend_server import create_app
 
 class PlanApiTestCase(unittest.TestCase):
     def setUp(self):
-        # ??????????????????
         self.app = create_app()
         self.client = self.app.test_client()
 
@@ -34,9 +33,7 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertEqual(calc.get_json()["solution_count"], 3)
 
     def test_create_and_calculate_plan(self):
-        # ??????? -> ?? -> ?????????
         plan_id = self._create_plan()
-
         self._calculate_plan_sync(plan_id)
 
         detail = self.client.get("/api/plans/{0}".format(plan_id))
@@ -49,8 +46,55 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertIn("order_line_id", body["solution_item_boxes"][0])
         self.assertIn("rule_snapshot_id", body["solution_item_boxes"][0])
 
+    def test_no_merge_disallow_cross_order_carton_and_pallet_mix(self):
+        payload = {
+            "customer_code": "CUST-NO-MERGE",
+            "ship_date": "2026-03-24",
+            "merge_mode": "NO_MERGE",
+            "orders": [
+                {"order_no": "ORD-A", "model": "54-1801", "qty": 6},
+                {"order_no": "ORD-B", "model": "54-1801", "qty": 6},
+            ],
+        }
+        created = self.client.post("/api/plans", json=payload)
+        self.assertEqual(created.status_code, 201)
+        plan_id = created.get_json()["plan"]["id"]
+
+        calc = self.client.post("/api/plans/{0}/calculate".format(plan_id))
+        self.assertEqual(calc.status_code, 200)
+
+        detail = self.client.get("/api/plans/{0}".format(plan_id))
+        self.assertEqual(detail.status_code, 200)
+        body = detail.get_json()
+        solution_id = body["solutions"][0]["id"]
+
+        box_rows = [
+            row
+            for row in body["solution_item_boxes"]
+            if row["solution_id"] == solution_id
+        ]
+        pallet_rows = [
+            row
+            for row in body["solution_item_pallets"]
+            if row["solution_id"] == solution_id
+        ]
+
+        carton_order_map = {}
+        for row in box_rows:
+            carton_order_map.setdefault(row["carton_id"], set()).add(str(row["order_no"]))
+        self.assertTrue(carton_order_map)
+        for order_set in carton_order_map.values():
+            self.assertEqual(len(order_set), 1)
+
+        pallet_order_map = {}
+        for row in pallet_rows:
+            pallet_order_map.setdefault(row["pallet_id"], set())
+            pallet_order_map[row["pallet_id"]].update(carton_order_map.get(row["carton_id"], set()))
+        self.assertTrue(pallet_order_map)
+        for order_set in pallet_order_map.values():
+            self.assertEqual(len(order_set), 1)
+
     def test_async_confirm_rollback_and_override_upload(self):
-        # ??????? -> ?? -> ?? -> ???? -> ??????
         plan_id = self._create_plan()
 
         queued = self.client.post("/api/plans/{0}/calculate".format(plan_id), json={"async": True})
@@ -126,7 +170,6 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertIn("PLAN_OVERRIDE_UPLOAD", actions)
 
     def test_layout_filters_and_export_endpoint(self):
-        # 覆盖布局筛选接口与导出接口
         plan_id = self._create_plan()
         self._calculate_plan_sync(plan_id)
 
@@ -163,9 +206,7 @@ class PlanApiTestCase(unittest.TestCase):
         for row in by_model.get_json()["boxes"]:
             self.assertIn(model, row["models"])
 
-        explicit = self.client.get(
-            "/api/layout/{0}?solution_id={1}".format(plan_id, selected_solution_id)
-        )
+        explicit = self.client.get("/api/layout/{0}?solution_id={1}".format(plan_id, selected_solution_id))
         self.assertEqual(explicit.status_code, 200)
         self.assertEqual(explicit.get_json()["solution_id"], selected_solution_id)
 
@@ -194,6 +235,46 @@ class PlanApiTestCase(unittest.TestCase):
             self.assertIn("ORD-001", str(ws["A3"].value or ""))
             wb.close()
             exported.close()
+
+    def test_import_template_upload_auto_create_and_calculate(self):
+        with tempfile.TemporaryDirectory(prefix="plan_import_") as temp_dir:
+            file_path = os.path.join(temp_dir, "orders_import.xlsx")
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "import"
+            ws.append(["unit_info", "ship_date", "merge_mode", "need_pallet"])
+            ws.append(["CUST-6002", "2026-03-24", "NO_MERGE", "Y"])
+            ws.append([])
+            ws.append(["model", "customer_line", "qty", "price", "amount", "category", "order_no"])
+            ws.append(["54-1801", "LINE-CUST-01", 120, 5.6, 672, "part", "ORD-001"])
+            ws.append(["54-82202", "LINE-CUST-02", 60, 4.2, 252, "part", "ORD-002"])
+            wb.save(file_path)
+            wb.close()
+
+            with open(file_path, "rb") as fh:
+                imported = self.client.post(
+                    "/api/plans/import",
+                    data={
+                        "file": (fh, "orders_import.xlsx"),
+                        "actor": "qa",
+                    },
+                    content_type="multipart/form-data",
+                )
+
+        self.assertEqual(imported.status_code, 201)
+        body = imported.get_json()
+        self.assertIn("plan", body)
+        self.assertIn("calculate", body)
+        self.assertEqual(body["calculate"]["solution_count"], 3)
+        self.assertEqual(body["plan"]["status"], "PENDING_CONFIRM")
+
+        plan_id = body["plan"]["id"]
+        detail = self.client.get("/api/plans/{0}".format(plan_id))
+        self.assertEqual(detail.status_code, 200)
+        detail_body = detail.get_json()
+        self.assertEqual(detail_body["plan"]["customer_code"], "CUST-6002")
+        self.assertEqual(len(detail_body["solutions"]), 3)
 
 
 if __name__ == "__main__":
