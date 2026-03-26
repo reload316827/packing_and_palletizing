@@ -187,6 +187,8 @@ class PlanApiTestCase(unittest.TestCase):
         self.assertEqual(layout_body["plan_id"], plan_id)
         self.assertGreater(layout_body["stats"]["row_count"], 0)
         self.assertEqual(layout_body["stats"]["row_count"], len(layout_body["boxes"]))
+        # 回归：详情页方案明细依赖 layout 接口返回订单号，避免前端出现 "-"
+        self.assertTrue(str(layout_body["boxes"][0].get("order_no", "")).strip())
 
         first_box = layout_body["boxes"][0]
         pallet_id = first_box["pallet_id"]

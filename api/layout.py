@@ -38,6 +38,19 @@ def _pick_solution_id(conn, plan_id, explicit_solution_id=None):
     return int(row["id"])
 
 
+def _dedupe_join(values, delimiter="+"):
+    # 按首次出现顺序去重拼接，保证混箱场景下同一外箱可展示多个订单号
+    seen = set()
+    ordered = []
+    for value in values or []:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        ordered.append(text)
+    return delimiter.join(ordered)
+
+
 @layout_bp.route("/<int:plan_id>", methods=["GET"])
 def get_layout(plan_id):
     # ?? 3D ?????????????/??/?????
@@ -63,7 +76,7 @@ def get_layout(plan_id):
 
             box_rows = conn.execute(
                 """
-                SELECT carton_id, model_code, qty
+                SELECT carton_id, model_code, qty, order_no
                 FROM solution_item_box
                 WHERE plan_id = ? AND solution_id = ?
                 ORDER BY carton_seq ASC, id ASC
@@ -76,10 +89,12 @@ def get_layout(plan_id):
 
     model_map = {}
     qty_map = {}
+    order_no_map = {}
     for row in box_rows:
         cid = str(row["carton_id"])
         model_map.setdefault(cid, set()).add(str(row["model_code"] or "-"))
         qty_map[cid] = qty_map.get(cid, 0) + int(row["qty"] or 0)
+        order_no_map.setdefault(cid, []).append(row["order_no"])
 
     boxes = []
     for row in pallet_rows:
@@ -96,6 +111,7 @@ def get_layout(plan_id):
             "carton_spec_cm": str(row["carton_spec_cm"] or "56*38*29"),
             "pose": str(row["carton_pose"] or "upright"),
             "models": models,
+            "order_no": _dedupe_join(order_no_map.get(cid)) or "-",
             "qty": int(qty_map.get(cid, 0)),
             "gross_weight_kg": float(row["carton_gross_weight_kg"] or 0),
             "pallet_spec_cm": str(row["pallet_spec_cm"] or "116*116*103"),
