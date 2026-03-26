@@ -161,8 +161,9 @@
   }
 
   function parseSpecToDims(specText) {
+    // 3D 展示按规格厘米值等比例呈现，不做人为缩放
     const [w, d, h] = parseSpecNumbers(specText, [56, 38, 29]);
-    return { w: Math.max(16, Math.round(w * 0.9)), d: Math.max(14, Math.round(d * 0.9)), h: Math.max(12, Math.round(h * 0.85)) };
+    return { w: Math.max(1, Number(w || 0)), d: Math.max(1, Number(d || 0)), h: Math.max(1, Number(h || 0)) };
   }
 
   function buildRowsFromPlan(plan) {
@@ -1013,8 +1014,22 @@
       const selectedPallet = els.palletSelect ? els.palletSelect.value : "ALL";
       const palletIds = uniqueSorted(displayRows.map(item => item.palletId));
       const visiblePallets = selectedPallet === "ALL" ? palletIds : palletIds.filter(item => item === selectedPallet);
-      const palletGapX = 185;
-      const palletGapZ = 175;
+
+      const palletBaseSpec = new Map();
+      visiblePallets.forEach(palletId => {
+        const palletBoxes = displayRows.filter(item => item.palletId === palletId);
+        const palletSpec = palletBoxes[0] ? String(palletBoxes[0].palletSpec || "116*116*103") : "116*116*103";
+        const usableSpec = palletBoxes[0] ? String(palletBoxes[0].usableSpec || palletSpec) : palletSpec;
+        const [palletW, palletD, palletTotalH] = parseSpecNumbers(palletSpec, [116, 116, 103]);
+        const [, , usableH] = parseSpecNumbers(usableSpec, [Math.max(1, palletW - 8), Math.max(1, palletD - 8), 90]);
+        const baseH = Math.max(8, Math.min(24, Number(palletTotalH || 0) - Number(usableH || 0) || 12));
+        palletBaseSpec.set(palletId, { palletW, palletD, baseH });
+      });
+      const maxPalletW = Math.max(116, ...[...palletBaseSpec.values()].map(item => Number(item.palletW || 0)));
+      const maxPalletD = Math.max(116, ...[...palletBaseSpec.values()].map(item => Number(item.palletD || 0)));
+      // 多托盘场景仅在托盘间保留少量距离，托盘内箱体不加缝隙
+      const palletGapX = Math.max(maxPalletW + 22, 160);
+      const palletGapZ = Math.max(maxPalletD + 22, 150);
       const maxCols = Math.max(1, Math.floor((board.width - 24) / palletGapX));
       const maxRows = Math.max(1, Math.floor((board.depth - 24) / palletGapZ));
       const pageSize = maxCols * maxRows;
@@ -1031,95 +1046,92 @@
         const palletBoxes = displayRows
           .filter(item => item.palletId === palletId)
           .sort((a, b) => Number(a.rowSeq || 0) - Number(b.rowSeq || 0));
-        const usableSpec = palletBoxes[0] ? String(palletBoxes[0].usableSpec || "108*108*90") : "108*108*90";
-        const [usableW, usableD] = parseSpecNumbers(usableSpec, [108, 108, 90]);
-        const palletW = Math.max(100, Math.round(usableW * 1.02));
-        const palletD = Math.max(90, Math.round(usableD * 1.02));
+        const base = palletBaseSpec.get(palletId) || { palletW: 116, palletD: 116, baseH: 12 };
+        const palletW = Number(base.palletW || 116);
+        const palletD = Number(base.palletD || 116);
+        const palletH = Number(base.baseH || 12);
 
-        addBox(group, { x: xOffset, y: 6, z: zOffset, w: palletW, h: 12, d: palletD, color: 0x8d5524 });
-        createLabel(group, `${palletId}\\n${palletBoxes.length}箱`, xOffset, 16, zOffset - 66, { scaleX: 18, scaleY: 6, fontSize: 20 });
-        createLabel(group, "蓝色=平放  橙色=竖放（按实际箱数）", xOffset, 16, zOffset + 66, { scaleX: 30, scaleY: 5, fontSize: 17, bg: "rgba(30, 41, 59, 0.82)" });
+        addBox(group, { x: xOffset, y: palletH / 2, z: zOffset, w: palletW, h: palletH, d: palletD, color: 0x8d5524 });
+        createLabel(group, `${palletId}\\n${palletBoxes.length}箱`, xOffset, palletH + 7.5, zOffset - (palletD / 2 + 10), { scaleX: 18, scaleY: 6, fontSize: 20 });
+        createLabel(group, "蓝色=平放  橙色=竖放（等比例尺寸）", xOffset, palletH + 7.5, zOffset + (palletD / 2 + 10), { scaleX: 30, scaleY: 5, fontSize: 17, bg: "rgba(30, 41, 59, 0.82)" });
 
         if (!palletBoxes.length) return;
+
         const displayBoxes = palletBoxes.map(item => {
           const isUpright = item.pose === "竖放";
-          if (isUpright) {
-            return {
-              ...item,
-              isUpright: true,
-              w: Math.max(10, Math.min(20, Math.round(item.w * 0.36))),
-              d: Math.max(9, Math.min(17, Math.round(item.d * 0.34))),
-              h: Math.max(16, Math.min(30, Math.round(item.h * 0.95))),
-              color: 0xfb923c,
-            };
-          }
+          // 竖放时将最长边作为高度，保持三边比例关系
+          const uprightDims = { w: Number(item.d || 1), d: Number(item.h || 1), h: Number(item.w || 1) };
+          const flatDims = { w: Number(item.w || 1), d: Number(item.d || 1), h: Number(item.h || 1) };
+          const dims = isUpright ? uprightDims : flatDims;
           return {
             ...item,
-            isUpright: false,
-            w: Math.max(12, Math.min(26, Math.round(item.w * 0.45))),
-            d: Math.max(10, Math.min(24, Math.round(item.d * 0.43))),
-            h: Math.max(10, Math.min(18, Math.round(item.h * 0.4))),
-            color: 0x60a5fa,
+            isUpright,
+            w: Math.max(1, dims.w),
+            d: Math.max(1, dims.d),
+            h: Math.max(1, dims.h),
+            color: isUpright ? 0xfb923c : 0x60a5fa,
           };
         });
 
-        const avgW = displayBoxes.reduce((sum, item) => sum + item.w, 0) / displayBoxes.length;
-        const avgD = displayBoxes.reduce((sum, item) => sum + item.d, 0) / displayBoxes.length;
-        const stepX = Math.max(16, Math.round(avgW + 3));
-        const stepZ = Math.max(14, Math.round(avgD + 3));
-        const cols = Math.max(1, Math.floor((palletW - 10) / stepX));
-        const rowsCount = Math.max(1, Math.floor((palletD - 10) / stepZ));
-        const layerCap = Math.max(1, cols * rowsCount);
-        const layerCount = Math.max(1, Math.ceil(displayBoxes.length / layerCap));
-        const startX = xOffset - ((cols - 1) * stepX) / 2;
-        const startZ = zOffset - ((rowsCount - 1) * stepZ) / 2;
-        const layerHeights = Array.from({ length: layerCount }).map((_, layerIdx) => {
-          const begin = layerIdx * layerCap;
-          const chunk = displayBoxes.slice(begin, begin + layerCap);
-          return chunk.reduce((h, item) => Math.max(h, item.h), 10);
-        });
+        // 采用紧密排布：同层内箱体之间不留额外间距；放不下时换行/换层
+        const left = -palletW / 2;
+        const near = -palletD / 2;
+        let cursorX = left;
+        let cursorZ = near;
+        let rowDepth = 0;
+        let layerMaxH = 0;
+        let baseY = palletH;
 
-        let baseY = 12;
-        for (let layer = 0; layer < layerCount; layer += 1) {
-          const begin = layer * layerCap;
-          const chunk = displayBoxes.slice(begin, begin + layerCap);
-          chunk.forEach((box, chunkIdx) => {
-            const row = Math.floor(chunkIdx / cols);
-            const col = chunkIdx % cols;
-            const x = startX + col * stepX;
-            const z = startZ + row * stepZ;
-            const y = baseY + box.h / 2 + 1;
-            addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: box.color });
-            if (box.isUpright) {
-              addBox(group, {
-                x,
-                y: y + box.h / 2 + 1.2,
-                z,
-                w: Math.max(6, box.w * 0.32),
-                h: 1.2,
-                d: Math.max(6, box.d * 0.32),
-                color: 0xdc2626,
-                opacity: 0.95,
-              });
-            }
-            const isTopLayer = layer === layerCount - 1;
-            const showLabel = labelMode === "all"
-              ? true
-              : labelMode === "top"
-                ? isTopLayer
-                : (isTopLayer && row % 2 === 0 && col % 2 === 0);
-            if (showLabel) {
-              createLabel(group, `${box.models.join("+")}${box.isUpright ? "\\n竖放" : ""}`, x, y + box.h / 2 + 4.6, z, {
-                scaleX: 10.5 * labelScale,
-                scaleY: 3.2 * labelScale,
-                fontSize: Math.round(14 * labelScale),
-                bg: box.isUpright ? "rgba(185, 28, 28, 0.86)" : "rgba(30, 41, 59, 0.78)",
-                border: box.isUpright ? "rgba(252, 165, 165, 0.92)" : "rgba(148, 163, 184, 0.75)",
-              });
-            }
-          });
-          baseY += layerHeights[layer] + 1.5;
-        }
+        displayBoxes.forEach((box, idx) => {
+          if (cursorX + box.w > left + palletW + 0.0001) {
+            cursorX = left;
+            cursorZ += rowDepth;
+            rowDepth = 0;
+          }
+          if (cursorZ + box.d > near + palletD + 0.0001) {
+            cursorX = left;
+            cursorZ = near;
+            baseY += layerMaxH;
+            rowDepth = 0;
+            layerMaxH = 0;
+          }
+
+          const x = xOffset + cursorX + box.w / 2;
+          const z = zOffset + cursorZ + box.d / 2;
+          const y = baseY + box.h / 2;
+          addBox(group, { x, y, z, w: box.w, h: box.h, d: box.d, color: box.color });
+          if (box.isUpright) {
+            addBox(group, {
+              x,
+              y: y + box.h / 2 + 0.9,
+              z,
+              w: Math.max(2.8, box.w * 0.22),
+              h: 0.9,
+              d: Math.max(2.8, box.d * 0.22),
+              color: 0xdc2626,
+              opacity: 0.95,
+            });
+          }
+          const showTopByNeighbor = idx === displayBoxes.length - 1 || (displayBoxes[idx + 1] && displayBoxes[idx + 1].h <= box.h);
+          const isTopLayer = showTopByNeighbor;
+          const showLabel = labelMode === "all"
+            ? true
+            : labelMode === "top"
+              ? isTopLayer
+              : (isTopLayer && idx % 2 === 0);
+          if (showLabel) {
+            createLabel(group, `${box.models.join("+")}${box.isUpright ? "\\n竖放" : ""}`, x, y + box.h / 2 + 4.6, z, {
+              scaleX: 10.5 * labelScale,
+              scaleY: 3.2 * labelScale,
+              fontSize: Math.round(14 * labelScale),
+              bg: box.isUpright ? "rgba(185, 28, 28, 0.86)" : "rgba(30, 41, 59, 0.78)",
+              border: box.isUpright ? "rgba(252, 165, 165, 0.92)" : "rgba(148, 163, 184, 0.75)",
+            });
+          }
+          cursorX += box.w;
+          rowDepth = Math.max(rowDepth, box.d);
+          layerMaxH = Math.max(layerMaxH, box.h);
+        });
       });
       return meta;
     }
