@@ -1072,6 +1072,10 @@
             color: isUpright ? 0xfb923c : 0x60a5fa,
           };
         });
+        // 竖放箱体集中排布，避免在每层/每行随机分散
+        const orderedBoxes = displayBoxes
+          .filter(item => !item.isUpright)
+          .concat(displayBoxes.filter(item => item.isUpright));
 
         // 采用紧密排布：同层内箱体之间不留额外间距；放不下时换行/换层
         const left = -palletW / 2;
@@ -1082,7 +1086,7 @@
         let layerMaxH = 0;
         let baseY = palletH;
 
-        displayBoxes.forEach((box, idx) => {
+        orderedBoxes.forEach((box, idx) => {
           if (cursorX + box.w > left + palletW + 0.0001) {
             cursorX = left;
             cursorZ += rowDepth;
@@ -1112,7 +1116,7 @@
               opacity: 0.95,
             });
           }
-          const showTopByNeighbor = idx === displayBoxes.length - 1 || (displayBoxes[idx + 1] && displayBoxes[idx + 1].h <= box.h);
+          const showTopByNeighbor = idx === orderedBoxes.length - 1 || (orderedBoxes[idx + 1] && orderedBoxes[idx + 1].h <= box.h);
           const isTopLayer = showTopByNeighbor;
           const showLabel = labelMode === "all"
             ? true
