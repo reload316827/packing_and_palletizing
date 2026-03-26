@@ -300,7 +300,7 @@
   function renderDatasetSwitch() {
     if (!els.datasetSwitch) return;
     if (state.apiMode) {
-      els.datasetSwitch.innerHTML = '<button class="ghost" type="button">瀹炴椂鏁版嵁妯″紡</button>';
+      els.datasetSwitch.innerHTML = '<button class="ghost" type="button">实时数据模式</button>';
       return;
     }
     els.datasetSwitch.innerHTML = PACKING_DEMO.buildDatasetSwitchHTML(state.datasetKey);
@@ -311,7 +311,7 @@
         const firstPlan = (PACKING_DEMO.getCurrentDataset().plans || [])[0];
         upsertQuery("plan", firstPlan ? firstPlan.id : "");
         initDataAndRender();
-        showToast(`宸插垏鎹㈠埌鏁版嵁闆?${key}`);
+        showToast(`已切换到数据集 ${key}`);
       });
     });
   }
@@ -331,14 +331,14 @@
 
   function renderHeader() {
     if (!state.plan) return;
-    if (els.detailTitle) els.detailTitle.textContent = `浠诲姟璇︽儏 - ${state.plan.id}`;
+    if (els.detailTitle) els.detailTitle.textContent = `任务详情 - ${state.plan.id}`;
     if (els.detailSub) {
       els.detailSub.textContent = [
-        `瀹㈡埛 ${state.plan.customerId}`,
-        `鍙戣揣鏃ユ湡 ${state.plan.shipDate}`,
-        `瑁呯瑕佹眰 ${state.plan.mode}`,
-        `鐘舵€?${state.plan.status}`,
-      ].join(" 锝?");
+        `客户 ${state.plan.customerId}`,
+        `发货日期 ${state.plan.shipDate}`,
+        `装箱要求 ${state.plan.mode}`,
+        `状态 ${state.plan.status}`,
+      ].join(" ｜ ");
     }
   }
 
@@ -356,7 +356,7 @@
     const manualByModel = new Map(manualRules.map(item => [String(item.model_code || "").trim(), item]));
 
     if (els.missingDataMeta) {
-      els.missingDataMeta.textContent = `缂哄皯 ${missingDetails.length} 涓瀷鍙疯鍒欙紝琛ュ綍鍚庡彲鐩存帴閲嶆柊璁＄畻`;
+      els.missingDataMeta.textContent = `缺少 ${missingDetails.length} 个型号规则，补录后可直接重新计算`;
     }
 
     if (!missingDetails.length) {
@@ -380,7 +380,7 @@
               <td>${escapeHtml(modelCode)}</td>
               <td>${Number(row.line_count || 0)}</td>
               <td>${Number(row.qty || 0)}</td>
-              <td><input class="missing-row-input" data-field="inner_box_spec" value="${escapeHtml(manual.inner_box_spec || "")}" placeholder="渚嬪 105" /></td>
+              <td><input class="missing-row-input" data-field="inner_box_spec" value="${escapeHtml(manual.inner_box_spec || "")}" placeholder="例如 105" /></td>
               <td><input class="missing-row-input" data-field="qty_per_carton" type="number" min="1" step="1" value="${escapeHtml(manual.qty_per_carton || "")}" /></td>
               <td><input class="missing-row-input" data-field="gross_weight_kg" type="number" min="0" step="0.01" value="${escapeHtml(manual.gross_weight_kg || "")}" /></td>
               <td><input class="missing-row-input" data-field="note" value="${escapeHtml(manual.note || "")}" /></td>
@@ -407,7 +407,7 @@
       }
       state.missingData = { missing_details: [] };
       renderMissingDataCard();
-      showToast(`缂哄皯鏁版嵁鍔犺浇澶辫触锛?{err.message}`);
+      showToast(`缺少数据加载失败：${err.message}`);
     }
   }
 
@@ -436,7 +436,7 @@
   async function saveMissingDataAndRecalculate() {
     const rules = collectMissingDataForm();
     if (!rules.length) {
-      showToast("璇峰厛琛ュ綍鍐呯洅缂栧彿鍚庡啀淇濆瓨");
+      showToast("请先补录内盒编号后再保存");
       return;
     }
     if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = true;
@@ -471,13 +471,13 @@
     const specOptions = uniqueSorted(rows.map(item => item.spec));
     const cartonOptions = uniqueSorted(rows.map(item => item.id));
 
-    els.modelFilter.innerHTML = ['<option value="">鍏ㄩ儴鍨嬪彿</option>']
+    els.modelFilter.innerHTML = ['<option value="">全部型号</option>']
       .concat(modelOptions.map(item => `<option value="${item}">${item}</option>`))
       .join("");
-    els.specFilter.innerHTML = ['<option value="">鍏ㄩ儴瑙勬牸</option>']
+    els.specFilter.innerHTML = ['<option value="">全部规格</option>']
       .concat(specOptions.map(item => `<option value="${item}">${item}</option>`))
       .join("");
-    els.cartonFilter.innerHTML = ['<option value="">鍏ㄩ儴澶栫</option>']
+    els.cartonFilter.innerHTML = ['<option value="">全部外箱</option>']
       .concat(cartonOptions.map(item => `<option value="${item}">${item}</option>`))
       .join("");
   }
@@ -499,10 +499,10 @@
     const palletCount = new Set(rows.map(item => item.palletId)).size;
     const uprightCount = rows.filter(item => item.pose === "竖放").length;
     const labels = [
-      { label: "澶栫鎬绘暟", value: String(rows.length) },
-      { label: "鎵樼洏鎬绘暟", value: String(palletCount) },
+      { label: "外箱总数", value: String(rows.length) },
+      { label: "托盘总数", value: String(palletCount) },
       { label: "竖放外箱", value: String(uprightCount) },
-      { label: "璁″垝琛屾暟", value: String((state.plan.kpis || {}).lineCount || rows.length) },
+      { label: "计划行数", value: String((state.plan.kpis || {}).lineCount || rows.length) },
     ];
     els.detailKpis.innerHTML = labels
       .map(item => `<article class="kpi"><h4>${item.label}</h4><p>${item.value}</p></article>`)
@@ -522,7 +522,7 @@
         cartonId: item.id,
         cartonSpec: item.spec,
         grossWeight: Number(item.grossWeight || 0) / parts,
-        remark: parts > 1 ? "鎷肩" : "-",
+        remark: parts > 1 ? "拼箱" : "-",
       }));
     });
     const orderMap = groupBy(packingLines, line => line.orderNo);
@@ -532,19 +532,19 @@
     const packingTable = `
       <div class="plan-table-block">
         <div class="plan-table-head">
-          <h4>瑁呯鏄庣粏</h4>
-          <p>鏍煎紡瀵归綈瀵煎嚭妯℃澘锛氳鍗?鍨嬪彿/鏁伴噺/鍐呯洅/澶栫/瑙勬牸/姣涢噸/澶囨敞</p>
+          <h4>装箱明细</h4>
+          <p>格式对齐导出模板：订单/型号/数量/内盒/外箱/规格/毛重/备注</p>
         </div>
         <div class="plan-table-scroll">
           <table>
             <thead>
               <tr>
-                <th>璁㈠崟鍙?/th><th>鍨嬪彿</th><th>鏁伴噺</th><th>鍐呯洅</th><th>澶栫缂栧彿</th><th>澶栫瑙勬牸(cm)</th><th>姣涢噸(kg)</th><th>澶囨敞</th>
+                <th>订单号</th><th>型号</th><th>数量</th><th>内盒</th><th>外箱编号</th><th>外箱规格(cm)</th><th>毛重(kg)</th><th>备注</th>
               </tr>
             </thead>
             <tbody>
               ${[...orderMap.entries()].map(([orderNo, lineRows]) => `
-                <tr><td colspan="8" style="background:#eef2ff;color:#334155;font-weight:700;">璁㈠崟锛?{orderNo}</td></tr>
+                <tr><td colspan="8" style="background:#eef2ff;color:#334155;font-weight:700;">订单：${orderNo}</td></tr>
                 ${lineRows.map(line => `
                   <tr>
                     <td>${line.orderNo}</td>
@@ -557,9 +557,9 @@
                     <td>${line.remark}</td>
                   </tr>
                 `).join("")}
-                <tr><td colspan="8" style="background:#f8fbff;color:#1e3a8a;font-weight:700;">璁㈠崟姹囨€伙細鎬讳欢鏁?${lineRows.reduce((sum, row) => sum + Number(row.qty || 0), 0)}锛屾€绘瘺閲?${lineRows.reduce((sum, row) => sum + Number(row.grossWeight || 0), 0).toFixed(1)} kg</td></tr>
+                <tr><td colspan="8" style="background:#f8fbff;color:#1e3a8a;font-weight:700;">订单汇总：总件数 ${lineRows.reduce((sum, row) => sum + Number(row.qty || 0), 0)}，总毛重 ${lineRows.reduce((sum, row) => sum + Number(row.grossWeight || 0), 0).toFixed(1)} kg</td></tr>
               `).join("")}
-              <tr><td colspan="8" style="background:#e0f2fe;color:#0c4a6e;font-weight:800;">瑁呯鎬绘眹鎬伙細璁㈠崟 ${orderMap.size} 绗旓紝澶栫 ${new Set(rows.map(item => item.id)).size} 绠憋紝鎬讳欢鏁?${totalQty}锛屾€绘瘺閲?${totalWeight.toFixed(1)} kg</td></tr>
+              <tr><td colspan="8" style="background:#e0f2fe;color:#0c4a6e;font-weight:800;">装箱总汇总：订单 ${orderMap.size} 笔，外箱 ${new Set(rows.map(item => item.id)).size} 箱，总件数 ${totalQty}，总毛重 ${totalWeight.toFixed(1)} kg</td></tr>
             </tbody>
           </table>
         </div>
@@ -584,14 +584,14 @@
     const palletTable = `
       <div class="plan-table-block">
         <div class="plan-table-head">
-          <h4>瑁呮墭姹囨€?/h4>
+          <h4>装托汇总</h4>
           <p>竖放箱高亮展示</p>
         </div>
         <div class="plan-table-scroll">
           <table>
             <thead>
               <tr>
-                <th>鎵樼洏缂栧彿</th><th>澶栫鏁?/th><th>澶栫瑙勬牸</th><th>鍨嬪彿闆嗗悎</th><th>鎽嗘斁</th>
+                <th>托盘编号</th><th>外箱数</th><th>外箱规格</th><th>型号集合</th><th>摆放</th>
               </tr>
             </thead>
             <tbody>${palletRows}</tbody>
@@ -611,7 +611,7 @@
         <article class="solution ${idx === state.solutionIndex ? "active" : ""}" data-solution-index="${idx}">
           <span class="badge">${item.complexity}</span>
           <h4>${item.name}</h4>
-          <p>澶栫 ${item.boxCount} 绠憋綔鎵樼洏 ${item.palletCount} 鎵?/p>
+          <p>外箱 ${item.boxCount} 箱｜托盘 ${item.palletCount} 托</p>
         </article>
       `)
       .join("");
@@ -622,7 +622,7 @@
         state.solutionIndex = idx;
         state.rows = projectRowsBySolution(state.baseRows, state.solutionIndex);
         rerenderContent();
-        showToast(`宸插垏鎹㈠埌${(state.plan.solutions[idx] || {}).name || "鐩爣"}鏂规`);
+        showToast(`已切换到 ${(state.plan.solutions[idx] || {}).name || "目标"} 方案`);
       });
     });
   }
@@ -639,8 +639,8 @@
   function renderMetricScopeSwitch() {
     if (!els.metricScopeSwitch) return;
     els.metricScopeSwitch.innerHTML = `
-      <button class="${state.metricScope === "plan" ? "primary" : "ghost"}" data-scope="plan">璁″垝鍙ｅ緞</button>
-      <button class="${state.metricScope === "filtered" ? "primary" : "ghost"}" data-scope="filtered">绛涢€夊彛寰?/button>
+      <button class="${state.metricScope === "plan" ? "primary" : "ghost"}" data-scope="plan">计划口径</button>
+      <button class="${state.metricScope === "filtered" ? "primary" : "ghost"}" data-scope="filtered">筛选口径</button>
     `;
     els.metricScopeSwitch.querySelectorAll("[data-scope]").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -876,7 +876,7 @@
           scaleY: Math.min(10, 6.3 + 1.8 * (labelScale - 1)),
           fontSize: Math.min(28, Math.round(18 + 3 * (labelScale - 1))),
         });
-        createLabel(group, `鍨嬪彿:${box.models.join("+")}`, xBase, outerY + box.h / 2 + 1.2, zBase - box.d * 0.33, {
+        createLabel(group, `型号:${box.models.join("+")}`, xBase, outerY + box.h / 2 + 1.2, zBase - box.d * 0.33, {
           scaleX: Math.min(26, 15 + 4.5 * (labelScale - 1)),
           scaleY: Math.min(8, 4.2 + 1.4 * (labelScale - 1)),
           fontSize: Math.min(22, Math.round(14 + 3 * (labelScale - 1))),
@@ -1096,8 +1096,8 @@
 
     const allBoxIds = uniqueSorted(displayRows.map(item => item.id));
     const allPalletIds = uniqueSorted(displayRows.map(item => item.palletId));
-    populateSelect(els.packingBoxSelect, allBoxIds, "鍏ㄩ儴澶栫");
-    populateSelect(els.palletSelect, allPalletIds, "鍏ㄩ儴鎵樼洏");
+    populateSelect(els.packingBoxSelect, allBoxIds, "全部外箱");
+    populateSelect(els.palletSelect, allPalletIds, "全部托盘");
     ensureLabelScaleOption4x();
 
     const removeListeners = [];
@@ -1148,8 +1148,8 @@
       const row = document.createElement("div");
       row.className = "quick-scale-row";
       row.innerHTML = `
-        <button type="button" class="quick-scale-btn" data-action="minus">瀛楀彿-</button>
-        <button type="button" class="quick-scale-btn" data-action="plus">瀛楀彿+</button>
+        <button type="button" class="quick-scale-btn" data-action="minus">字号-</button>
+        <button type="button" class="quick-scale-btn" data-action="plus">字号+</button>
         <button type="button" class="quick-scale-btn" data-action="max">4x</button>
         <button type="button" class="quick-scale-btn" data-action="reset">2x</button>
       `;
@@ -1207,8 +1207,8 @@
 
     const allBoxIds = uniqueSorted(filteredRows.map(item => item.id));
     const allPalletIds = uniqueSorted(filteredRows.map(item => item.palletId));
-    populateSelect(els.packingBoxSelect, allBoxIds, "鍏ㄩ儴澶栫");
-    populateSelect(els.palletSelect, allPalletIds, "鍏ㄩ儴鎵樼洏");
+    populateSelect(els.packingBoxSelect, allBoxIds, "全部外箱");
+    populateSelect(els.palletSelect, allPalletIds, "全部托盘");
 
     if (state.viewerApi) {
       state.viewerApi.destroy();
@@ -1266,7 +1266,7 @@
       if (els.labelModeSelect) els.labelModeSelect.value = "sparse";
       state.currentMode = "pallet";
       rerenderContent();
-      showToast("3D 绛涢€夊凡閲嶇疆");
+      showToast("3D 筛选已重置");
     });
   }
 
