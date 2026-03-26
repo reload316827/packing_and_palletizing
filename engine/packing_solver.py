@@ -48,19 +48,28 @@ def _build_rule_index(rules):
             _pick_first(item, ["qty_per_carton", "数量", "一箱总数/只"]),
             0,
         )
-        qty_options_raw = item.get("qty_options") or []
+        capacity_options_raw = item.get("capacity_options") or []
+        qty_options_raw = item.get("qty_options") or [opt.get("qty") for opt in capacity_options_raw if isinstance(opt, dict)]
         qty_options = []
         for option in qty_options_raw:
             value = _safe_int(option, 0)
             if value > 0 and value not in qty_options:
                 qty_options.append(value)
         qty_options.sort()
+        package_weight_by_qty = {}
+        for opt in capacity_options_raw:
+            if not isinstance(opt, dict):
+                continue
+            opt_qty = _safe_int(opt.get("qty"), 0)
+            if opt_qty <= 0:
+                continue
+            package_weight_by_qty[str(opt_qty)] = max(0.0, _safe_float(opt.get("package_weight_kg"), 0.0))
         gross_weight_kg = _safe_float(
             _pick_first(item, ["gross_weight_kg", "毛重", "毛重/kg"]),
-            10.0,
+            0.5,
         )
-        # 当未提供装箱容量时，后续会按候选容量动态选箱容；此处仅计算单只毛重
-        unit_gross = gross_weight_kg / max(1, qty_per_carton or (qty_options[0] if qty_options else 20))
+        # 型号-内盒规则中的毛重字段按“只重/kg”使用
+        unit_weight_kg = max(0.001, gross_weight_kg)
 
         allow_side_place = _safe_bool(
             _pick_first(item, ["allow_side_place", "side_place_enabled", "允许侧放"]),
@@ -77,7 +86,8 @@ def _build_rule_index(rules):
             "inner_box_spec": str(_pick_first(item, ["inner_box_spec", "内盒"], "105")).strip() or "105",
             "qty_per_carton": max(1, qty_per_carton) if qty_per_carton > 0 else None,
             "qty_options": qty_options,
-            "unit_gross_kg": max(0.01, unit_gross),
+            "package_weight_by_qty": package_weight_by_qty,
+            "unit_weight_kg": unit_weight_kg,
             # 方向约束：默认正放，只有满足触发条件时允许侧放。
             "allow_side_place": allow_side_place and max_side_place_qty > 0,
             "max_side_place_qty": max(0, max_side_place_qty),
@@ -124,6 +134,13 @@ def _pick_best_capacity(total_qty, explicit_cap, qty_options):
             -cap,
         ),
     )
+
+
+def _pick_package_weight(package_weight_by_qty, cap):
+    if not isinstance(package_weight_by_qty, dict):
+        return 0.0
+    value = package_weight_by_qty.get(str(cap))
+    return max(0.0, _safe_float(value, 0.0))
 
 
 def _consume_order_refs(refs, need_qty):
@@ -203,7 +220,7 @@ def _resolve_pose_mode(items, carton_cap, rule_index):
     return "mixed", side_place_qty
 
 
-def _add_carton(cartons, carton_seq, inner_box_spec, items, rule_index, carton_cap):
+def _add_carton(cartons, carton_seq, inner_box_spec, items, rule_index, carton_cap, package_weight_kg=0.0):
     """统一创建外箱记录，并计算毛重与方向。"""
     gross = 0.0
     model_set = set()
@@ -212,7 +229,8 @@ def _add_carton(cartons, carton_seq, inner_box_spec, items, rule_index, carton_c
         model_set.add(model_code)
         qty = _safe_int(line.get("qty"), 0)
         model_rule = rule_index.get(model_code, {})
-        gross += qty * _safe_float(model_rule.get("unit_gross_kg"), 0.5)
+        gross += qty * _safe_float(model_rule.get("unit_weight_kg"), 0.5)
+    gross += max(0.0, _safe_float(package_weight_kg, 0.0))
 
     pose_mode, side_place_qty = _resolve_pose_mode(
         items=items,
@@ -294,6 +312,7 @@ def solve_packing(order_lines, rules):
             explicit_cap=model_rule.get("qty_per_carton"),
             qty_options=model_rule.get("qty_options") or [],
         )
+        package_weight_kg = _pick_package_weight(model_rule.get("package_weight_by_qty"), cap)
         full_cartons = total_qty // cap
         remainder = total_qty % cap
 
@@ -312,6 +331,7 @@ def solve_packing(order_lines, rules):
                 ],
                 rule_index=rule_index,
                 carton_cap=cap,
+                package_weight_kg=package_weight_kg,
             )
             carton_seq += 1
 
@@ -323,6 +343,8 @@ def solve_packing(order_lines, rules):
                     "qty": remainder,
                     "inner_box_spec": model_rule["inner_box_spec"],
                     "qty_per_carton": cap,
+                    "qty_options": model_rule.get("qty_options") or [],
+                    "package_weight_by_qty": model_rule.get("package_weight_by_qty") or {},
                     "order_refs": order_refs,
                 }
             )
@@ -333,7 +355,25 @@ def solve_packing(order_lines, rules):
         remains_by_inner[str(row["inner_box_spec"])].append(dict(row))
 
     for inner_box_spec, queue in remains_by_inner.items():
-        cap = max([_safe_int(item.get("qty_per_carton"), 20) for item in queue] + [20])
+        total_pending_qty = sum(max(0, _safe_int(item.get("qty"), 0)) for item in queue)
+        explicit_caps = [_safe_int(item.get("qty_per_carton"), 0) for item in queue if _safe_int(item.get("qty_per_carton"), 0) > 0]
+        qty_options = []
+        for item in queue:
+            for option in item.get("qty_options") or []:
+                value = _safe_int(option, 0)
+                if value > 0 and value not in qty_options:
+                    qty_options.append(value)
+        cap = _pick_best_capacity(
+            total_qty=total_pending_qty,
+            explicit_cap=max(explicit_caps) if explicit_caps else None,
+            qty_options=qty_options,
+        )
+        package_weight_kg = 0.0
+        for item in queue:
+            candidate = _pick_package_weight(item.get("package_weight_by_qty"), cap)
+            if candidate > 0:
+                package_weight_kg = candidate
+                break
         pending = [item for item in queue if _safe_int(item.get("qty"), 0) > 0]
 
         while any(_safe_int(item.get("qty"), 0) > 0 for item in pending):
@@ -368,6 +408,7 @@ def solve_packing(order_lines, rules):
                 items=items,
                 rule_index=rule_index,
                 carton_cap=cap,
+                package_weight_kg=package_weight_kg,
             )
             carton_seq += 1
 

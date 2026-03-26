@@ -128,7 +128,8 @@ def _normalize_inner_box_code(value):
 
 
 def _build_inner_box_capacity_options(pallet_rules):
-    options = defaultdict(set)
+    options = defaultdict(list)
+    seen = defaultdict(set)
     for row in pallet_rules or []:
         inner_box_code = _normalize_inner_box_code(
             row.get("inner_box_code") or row.get("inner_box_spec") or row.get("内盒编号") or row.get("编号")
@@ -136,13 +137,29 @@ def _build_inner_box_capacity_options(pallet_rules):
         if not inner_box_code:
             continue
         carton_qty = row.get("carton_qty") or row.get("一箱总数/只") or row.get("一箱总数")
+        package_weight = (
+            row.get("inner_outer_weight_kg")
+            or row.get("内盒+外箱重量/kg")
+            or row.get("内盒+外箱重量")
+            or row.get("内盒外箱重量/kg")
+        )
         try:
             qty = int(float(str(carton_qty)))
         except (TypeError, ValueError):
             qty = 0
+        try:
+            package_weight_kg = float(str(package_weight)) if package_weight not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            package_weight_kg = 0.0
         if qty > 0:
-            options[inner_box_code].add(qty)
-    return {key: sorted(values) for key, values in options.items()}
+            dedupe_key = (qty, round(package_weight_kg, 6))
+            if dedupe_key in seen[inner_box_code]:
+                continue
+            seen[inner_box_code].add(dedupe_key)
+            options[inner_box_code].append({"qty": qty, "package_weight_kg": max(0.0, package_weight_kg)})
+    for key in options.keys():
+        options[key].sort(key=lambda item: int(item["qty"]))
+    return dict(options)
 
 
 def _attach_capacity_options(box_rules, pallet_rules):
@@ -152,7 +169,7 @@ def _attach_capacity_options(box_rules, pallet_rules):
     for row in box_rules or []:
         item = dict(row)
         inner_box_code = _normalize_inner_box_code(item.get("inner_box_spec"))
-        item["qty_options"] = capacity_map.get(inner_box_code, [])
+        item["capacity_options"] = capacity_map.get(inner_box_code, [])
         attached.append(item)
     return attached
 
