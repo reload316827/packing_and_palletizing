@@ -19,18 +19,50 @@
 
   const moduleConfig = {
     customerRules: {
-      columns: ["customer_code", "plan_count", "confirmed_count", "last_ship_date"],
-      labels: ["客户", "计划数", "已确认数", "最近发货日"]
+      columns: [
+        { label: "客户", key: "customer_code" },
+        { label: "计划数", key: "plan_count" },
+        { label: "已确认数", key: "confirmed_count" },
+        { label: "最近发货日", key: "last_ship_date" }
+      ]
     },
     modelInner: {
-      columns: ["model_code", "inner_box_spec", "qty_per_carton", "gross_weight_kg"],
-      labels: ["型号", "内盒", "装箱数", "毛重(kg)"]
+      columns: [
+        { label: "型号", key: "model_code" },
+        { label: "内盒", key: "inner_box_spec" },
+        { label: "装箱数", key: "qty_per_carton" },
+        { label: "毛重(kg)", key: "gross_weight_kg" }
+      ]
     },
     innerOuter: {
-      columns: ["inner_box_code", "carton_spec_cm", "pallet_spec_cm", "pallet_carton_qty"],
-      labels: ["内盒编号", "外箱规格(cm)", "托盘规格", "单托外箱数"]
+      columns: [
+        { label: "内盒编号", keys: ["inner_box_code", "编号", "内盒编号"] },
+        { label: "长/mm", keys: ["长/mm", "内盒长/mm", "长"] },
+        { label: "宽/mm", keys: ["宽/mm", "内盒宽/mm", "宽"] },
+        { label: "高/mm", keys: ["高/mm", "内盒高/mm", "高"] },
+        { label: "外箱规格/cm", keys: ["外箱规格/cm", "外箱规格(cm)", "外箱规格", "carton_spec_cm"] },
+        { label: "内盒+外箱重量/kg", keys: ["内盒+外箱重量/kg", "内盒+外箱重量", "内盒外箱重量/kg"] },
+        { label: "一箱总数/只", keys: ["一箱总数/只", "一箱总数", "carton_qty"] },
+        { label: "内盒排列方式（横竖高）/只", keys: ["内盒排列方式（横竖高）/只", "内盒排列方式(横竖高)/只", "内盒排列方式"] },
+        { label: "默认托盘规格/cm", keys: ["默认托盘规格/cm", "默认托盘规格(cm)", "默认托盘规格", "pallet_spec_cm"] },
+        { label: "默认规格下一托外箱数", keys: ["默认规格下一托外箱数", "默认下一托外箱数", "pallet_carton_qty"] },
+        { label: "外箱排列方式（横竖高）", keys: ["外箱排列方式（横竖高）/只", "外箱排列方式(横竖高)", "外箱排列方式（横竖高）"] },
+        { label: "来源Sheet", key: "source_sheet" },
+        { label: "来源行", key: "source_row" }
+      ]
     }
   };
+
+  function getCellValue(row, column) {
+    if (column.key) return row[column.key] ?? "-";
+    const keys = column.keys || [];
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
+        return row[key];
+      }
+    }
+    return "-";
+  }
 
   function showToast(msg) {
     els.toast.textContent = msg;
@@ -56,7 +88,7 @@
 
   function renderTable(moduleKey, rows) {
     const conf = moduleConfig[moduleKey];
-    els.ruleHead.innerHTML = conf.labels.map(label => `<th>${label}</th>`).join("");
+    els.ruleHead.innerHTML = conf.columns.map(col => `<th>${col.label}</th>`).join("");
 
     if (!rows.length) {
       els.ruleBody.innerHTML = "";
@@ -66,7 +98,7 @@
 
     els.ruleEmpty.style.display = "none";
     els.ruleBody.innerHTML = rows.map(row => {
-      const tds = conf.columns.map(col => `<td>${row[col] ?? "-"}</td>`).join("");
+      const tds = conf.columns.map(col => `<td>${getCellValue(row, col)}</td>`).join("");
       return `<tr>${tds}</tr>`;
     }).join("");
   }
