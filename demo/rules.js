@@ -31,9 +31,8 @@
       editable: true,
       columns: [
         { label: "型号", key: "model_code", editKey: "model_code", editable: true },
-        { label: "内盒", key: "inner_box_spec", editKey: "inner_box_spec", editable: true },
-        { label: "装箱数", key: "qty_per_carton", editKey: "qty_per_carton", editable: true },
-        { label: "毛重(kg)", key: "gross_weight_kg", editKey: "gross_weight_kg", editable: true }
+        { label: "毛重(kg)", key: "gross_weight_kg", editKey: "gross_weight_kg", editable: true },
+        { label: "内盒", key: "inner_box_spec", editKey: "inner_box_spec", editable: true }
       ]
     },
     innerOuter: {
