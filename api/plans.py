@@ -8,6 +8,8 @@ from core.errors import AppError
 from core.time_utils import utc_now_iso
 from jobs.plan_calculate import calculate_plan, enqueue_plan_calculation
 from services.exporter import export_plan_excel
+from services.import_loader import parse_import_template_to_plan_payload
+from services.rule_snapshot_service import get_active_box_rule_bundle
 
 plans_bp = Blueprint("plans", __name__, url_prefix="/api/plans")
 
@@ -50,6 +52,92 @@ def _insert_audit(conn, action, target_type, target_id, payload, actor="system")
             utc_now_iso(),
         ),
     )
+
+
+def _insert_plan_with_orders(conn, payload, created_at, actor):
+    orders = payload.get("orders") or []
+    cursor = conn.execute(
+        """
+        INSERT INTO shipment_plan
+        (customer_code, ship_date, merge_mode, status, source_payload, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(payload["customer_code"]).strip(),
+            str(payload["ship_date"]).strip(),
+            str(payload.get("merge_mode", "NO_MERGE")).strip() or "NO_MERGE",
+            "DRAFT",
+            json.dumps(payload, ensure_ascii=False),
+            created_at,
+            created_at,
+        ),
+    )
+    plan_id = cursor.lastrowid
+
+    for idx, order in enumerate(orders):
+        order_no = str((order or {}).get("order_no", "")).strip() or "ORDER-{0:03d}".format(idx + 1)
+        conn.execute(
+            """
+            INSERT INTO shipment_plan_order
+            (plan_id, order_no, line_payload, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (plan_id, order_no, json.dumps(order, ensure_ascii=False), created_at),
+        )
+
+    _insert_audit(
+        conn,
+        action="PLAN_CREATED",
+        target_type="shipment_plan",
+        target_id=plan_id,
+        payload={"order_count": len(orders)},
+        actor=actor,
+    )
+    return plan_id
+
+
+def _get_plan_models(conn, plan_id):
+    return set(_get_plan_model_stats(conn, plan_id).keys())
+
+
+def _get_plan_model_stats(conn, plan_id):
+    rows = conn.execute(
+        "SELECT line_payload FROM shipment_plan_order WHERE plan_id = ?",
+        (plan_id,),
+    ).fetchall()
+    stats = {}
+    for row in rows:
+        payload = json.loads(row["line_payload"] or "{}")
+        model_code = str(payload.get("model") or payload.get("model_code") or "").strip()
+        if model_code:
+            qty_value = payload.get("qty") or payload.get("quantity") or 0
+            try:
+                qty = int(float(str(qty_value)))
+            except (TypeError, ValueError):
+                qty = 0
+            info = stats.setdefault(model_code, {"qty": 0, "line_count": 0})
+            info["qty"] += max(0, qty)
+            info["line_count"] += 1
+    return stats
+
+
+def _get_manual_models(conn, plan_id):
+    rows = conn.execute(
+        "SELECT model_code FROM plan_manual_box_rule WHERE plan_id = ?",
+        (plan_id,),
+    ).fetchall()
+    return {str(row["model_code"]).strip() for row in rows if row["model_code"] is not None}
+
+
+def _calc_missing_models(conn, plan_id, ship_date):
+    order_models = _get_plan_models(conn, plan_id)
+    if not order_models:
+        return []
+    active_rules = get_active_box_rule_bundle(ship_date).get("rules") or []
+    active_models = {str(row.get("model_code") or "").strip() for row in active_rules if str(row.get("model_code") or "").strip()}
+    manual_models = _get_manual_models(conn, plan_id)
+    covered = active_models.union(manual_models)
+    return sorted(model for model in order_models if model not in covered)
 
 
 @plans_bp.route("", methods=["GET"])
@@ -100,6 +188,9 @@ def list_plans():
             plan["summary_box_count"] = int(summary_solution["box_count"]) if summary_solution else 0
             plan["summary_pallet_count"] = int(summary_solution["pallet_count"]) if summary_solution else 0
             plan["summary_weight_kg"] = float(summary_solution["gross_weight_kg"]) if summary_solution else 0.0
+            missing_models = _calc_missing_models(conn, plan["id"], plan["ship_date"])
+            plan["missing_model_count"] = len(missing_models)
+            plan["has_missing_data"] = True if missing_models else False
             plans.append(plan)
 
     return jsonify({"plans": plans}), 200
@@ -119,48 +210,60 @@ def create_plan():
         return _error_response(AppError("INVALID_ORDERS", "orders must be an array"))
 
     created_at = utc_now_iso()
+    actor = str(payload.get("actor") or "system")
     with get_conn() as conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO shipment_plan
-            (customer_code, ship_date, merge_mode, status, source_payload, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload["customer_code"].strip(),
-                payload["ship_date"].strip(),
-                payload.get("merge_mode", "NO_MERGE"),
-                "DRAFT",
-                json.dumps(payload, ensure_ascii=False),
-                created_at,
-                created_at,
-            ),
-        )
-        plan_id = cursor.lastrowid
-
-        for idx, order in enumerate(orders):
-            order_no = str((order or {}).get("order_no", "")).strip() or "ORDER-{0:03d}".format(idx + 1)
-            conn.execute(
-                """
-                INSERT INTO shipment_plan_order
-                (plan_id, order_no, line_payload, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (plan_id, order_no, json.dumps(order, ensure_ascii=False), created_at),
-            )
-
-        _insert_audit(
-            conn,
-            action="PLAN_CREATED",
-            target_type="shipment_plan",
-            target_id=plan_id,
-            payload={"order_count": len(orders)},
-            actor=str(payload.get("actor") or "system"),
-        )
-
+        plan_id = _insert_plan_with_orders(conn, payload, created_at, actor)
         row = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
 
     return jsonify({"plan": _row_to_dict(row)}), 201
+
+
+@plans_bp.route("/import", methods=["POST"])
+def import_plan_and_calculate():
+    # 上传导入模板并自动创建计划 + 同步计算 3 套方案
+    try:
+        file_name, file_path = _save_uploaded_plan_file()
+        parsed = parse_import_template_to_plan_payload(file_path)
+        payload = parsed["payload"]
+        _validate_plan_payload(payload)
+    except AppError as err:
+        return _error_response(err)
+
+    orders = payload.get("orders") or []
+    if not isinstance(orders, list):
+        return _error_response(AppError("INVALID_ORDERS", "orders must be an array"))
+    if not orders:
+        return _error_response(AppError("EMPTY_ORDERS", "no valid orders found in import template"))
+
+    actor = str(request.form.get("actor") or "web_user")
+    created_at = utc_now_iso()
+    with get_conn() as conn:
+        plan_id = _insert_plan_with_orders(conn, payload, created_at, actor)
+        row = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
+
+    try:
+        calc_result = calculate_plan(plan_id)
+    except AppError as err:
+        return _error_response(err)
+
+    with get_conn() as conn:
+        refreshed = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
+
+    return (
+        jsonify(
+            {
+                "plan": _row_to_dict(refreshed or row),
+                "calculate": calc_result,
+                "import_meta": {
+                    "file_name": file_name,
+                    "file_path": file_path,
+                    "sheet_name": parsed.get("sheet_name"),
+                    "order_count": int(parsed.get("order_count") or 0),
+                },
+            }
+        ),
+        201,
+    )
 
 
 @plans_bp.route("/<int:plan_id>", methods=["GET"])
@@ -206,9 +309,16 @@ def get_plan(plan_id):
             (str(plan_id),),
         ).fetchall()
 
+    with get_conn() as conn:
+        missing_models = _calc_missing_models(conn, plan_id, plan["ship_date"])
+
+    plan_data = _row_to_dict(plan)
+    plan_data["missing_model_count"] = len(missing_models)
+    plan_data["has_missing_data"] = True if missing_models else False
+
     return jsonify(
         {
-            "plan": _row_to_dict(plan),
+            "plan": plan_data,
             "orders": [_row_to_dict(row) for row in orders],
             "solutions": [_row_to_dict(row) for row in solutions],
             "solution_item_boxes": [_row_to_dict(row) for row in solution_item_boxes],
@@ -396,6 +506,117 @@ def export_plan(plan_id):
     )
 
 
+@plans_bp.route("/<int:plan_id>/missing-data", methods=["GET"])
+def get_plan_missing_data(plan_id):
+    with get_conn() as conn:
+        plan = conn.execute("SELECT * FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
+        if not plan:
+            return _error_response(AppError("PLAN_NOT_FOUND", "plan not found: {0}".format(plan_id), 404))
+
+        model_stats = _get_plan_model_stats(conn, plan_id)
+        missing_models = _calc_missing_models(conn, plan_id, plan["ship_date"])
+        manual_rows = conn.execute(
+            """
+            SELECT model_code, inner_box_spec, qty_per_carton, gross_weight_kg, note, updated_at
+            FROM plan_manual_box_rule
+            WHERE plan_id = ?
+            ORDER BY model_code ASC
+            """,
+            (plan_id,),
+        ).fetchall()
+
+    return jsonify(
+        {
+            "plan_id": plan_id,
+            "missing_models": missing_models,
+            "missing_details": [
+                {
+                    "model_code": model_code,
+                    "line_count": int((model_stats.get(model_code) or {}).get("line_count") or 0),
+                    "qty": int((model_stats.get(model_code) or {}).get("qty") or 0),
+                }
+                for model_code in missing_models
+            ],
+            "manual_rules": [dict(row) for row in manual_rows],
+            "has_missing_data": True if missing_models else False,
+        }
+    ), 200
+
+
+@plans_bp.route("/<int:plan_id>/missing-data", methods=["POST"])
+def save_plan_manual_rule(plan_id):
+    payload = request.get_json(silent=True) or {}
+    rules = payload.get("box_rules") or []
+    if not isinstance(rules, list) or not rules:
+        return _error_response(AppError("INVALID_RULES", "box_rules must be a non-empty array"))
+
+    now = utc_now_iso()
+    with get_conn() as conn:
+        plan = conn.execute("SELECT id FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
+        if not plan:
+            return _error_response(AppError("PLAN_NOT_FOUND", "plan not found: {0}".format(plan_id), 404))
+
+        saved = 0
+        for row in rules:
+            model_code = str((row or {}).get("model_code") or "").strip()
+            inner_box_spec = str((row or {}).get("inner_box_spec") or "").strip()
+            if not model_code or not inner_box_spec:
+                continue
+            qty_per_carton = row.get("qty_per_carton")
+            gross_weight_kg = row.get("gross_weight_kg")
+            note = str((row or {}).get("note") or "").strip() or None
+            try:
+                qty_per_carton = int(float(str(qty_per_carton))) if qty_per_carton not in (None, "") else None
+            except (TypeError, ValueError):
+                qty_per_carton = None
+            try:
+                gross_weight_kg = float(str(gross_weight_kg)) if gross_weight_kg not in (None, "") else None
+            except (TypeError, ValueError):
+                gross_weight_kg = None
+
+            updated = conn.execute(
+                """
+                UPDATE plan_manual_box_rule
+                SET inner_box_spec = ?, qty_per_carton = ?, gross_weight_kg = ?, note = ?, updated_at = ?
+                WHERE plan_id = ? AND model_code = ?
+                """,
+                (
+                    inner_box_spec,
+                    qty_per_carton,
+                    gross_weight_kg,
+                    note,
+                    now,
+                    plan_id,
+                    model_code,
+                ),
+            ).rowcount
+            if not updated:
+                conn.execute(
+                    """
+                    INSERT INTO plan_manual_box_rule
+                    (plan_id, model_code, inner_box_spec, qty_per_carton, gross_weight_kg, note, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plan_id,
+                        model_code,
+                        inner_box_spec,
+                        qty_per_carton,
+                        gross_weight_kg,
+                        note,
+                        now,
+                        now,
+                    ),
+                )
+            saved += 1
+
+    with get_conn() as conn:
+        plan = conn.execute("SELECT ship_date FROM shipment_plan WHERE id = ?", (plan_id,)).fetchone()
+        remaining = _calc_missing_models(conn, plan_id, plan["ship_date"]) if plan else []
+
+    return jsonify({"plan_id": plan_id, "saved_count": saved, "remaining_missing_models": remaining}), 200
+
+
 def _safe_file_name(name):
     invalid = set('\\/:*?"<>|')
     return "".join(ch if ch not in invalid else "_" for ch in str(name or "").strip())
@@ -411,6 +632,25 @@ def _save_uploaded_override_file():
     upload_dir = PROJECT_ROOT / "output" / "uploads" / "override"
     upload_dir.mkdir(parents=True, exist_ok=True)
     saved_name = "{0}_{1}".format(timestamp, origin_name or "override.xlsx")
+    saved_path = upload_dir / saved_name
+    file.save(str(saved_path))
+    return (origin_name or saved_name), str(saved_path)
+
+
+def _save_uploaded_plan_file():
+    file = request.files.get("file")
+    if not file or not str(file.filename or "").strip():
+        raise AppError("MISSING_UPLOAD_FILE", "file is required in multipart/form-data")
+
+    origin_name = _safe_file_name(file.filename)
+    suffix = Path(origin_name).suffix.lower()
+    if suffix != ".xlsx":
+        raise AppError("INVALID_FILE_TYPE", "only .xlsx is supported for order import")
+
+    timestamp = utc_now_iso().replace("-", "").replace(":", "").replace(".", "")
+    upload_dir = PROJECT_ROOT / "output" / "uploads" / "plans"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved_name = "{0}_{1}".format(timestamp, origin_name or "orders.xlsx")
     saved_path = upload_dir / saved_name
     file.save(str(saved_path))
     return (origin_name or saved_name), str(saved_path)

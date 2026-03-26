@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -20,8 +20,9 @@
         <a class="active" href="./list.html">列表页</a>
         <a href="./detail.html">详情页</a>
         <a href="./rules.html">规则页</a>
-        <a href="./overview.html">汇总页</a>`r`n      </nav>
-      <div class="sidebar-foot">支持假数据切换与筛选交互</div>
+        <a href="./overview.html">总览页</a>
+      </nav>
+      <div class="sidebar-foot">支持导入、筛选与重算</div>
     </aside>
 
     <main class="main">
@@ -30,7 +31,10 @@
           <h2>装箱装托任务列表</h2>
           <p id="datasetName">-</p>
         </div>
-        <div class="toolbar" id="datasetSwitch"></div>
+        <div class="toolbar" id="datasetSwitch">
+          <button id="uploadOrdersBtn">上传订单</button>
+          <input id="uploadOrdersFile" type="file" accept=".xlsx" style="display:none;" />
+        </div>
       </section>
 
       <section class="card">
@@ -39,9 +43,10 @@
           <select id="customerFilter"></select>
           <select id="statusFilter">
             <option value="">全部状态</option>
-            <option value="草稿">草稿</option>
-            <option value="待确认">待确认</option>
-            <option value="已确认">已确认</option>
+            <option value="MISSING_DATA">缺少数据</option>
+            <option value="DRAFT">草稿</option>
+            <option value="PENDING_CONFIRM">待确认</option>
+            <option value="CONFIRMED">已确认</option>
           </select>
           <button class="ghost" id="resetFilters">重置筛选</button>
         </div>
@@ -69,10 +74,8 @@
     </main>
   </div>
 
-  <div class="toast" id="toast">Demo 交互：仅前端假数据</div>
+  <div class="toast" id="toast">提示</div>
   <script src="./shared-data.js"></script>
   <script src="./list.js"></script>
 </body>
 </html>
-
-

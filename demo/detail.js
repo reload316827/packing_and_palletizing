@@ -14,6 +14,12 @@
     viewPackingBtn: document.getElementById("viewPackingBtn"),
     viewPalletBtn: document.getElementById("viewPalletBtn"),
     detailKpis: document.getElementById("detailKpis"),
+    missingDataCard: document.getElementById("missingDataCard"),
+    missingDataMeta: document.getElementById("missingDataMeta"),
+    missingDataEmpty: document.getElementById("missingDataEmpty"),
+    missingDataTableWrap: document.getElementById("missingDataTableWrap"),
+    missingDataBody: document.getElementById("missingDataBody"),
+    saveMissingDataBtn: document.getElementById("saveMissingDataBtn"),
     planTableWrap: document.getElementById("planTableWrap"),
     solutionGrid: document.getElementById("solutionGrid"),
     ordersText: document.getElementById("ordersText"),
@@ -50,6 +56,8 @@
     metricScope: "plan",
     currentMode: "pallet",
     viewerApi: null,
+    planId: null,
+    missingData: null,
   };
 
   function showToast(msg) {
@@ -67,6 +75,15 @@
       throw new Error(`HTTP ${res.status}: ${body}`);
     }
     return res.json();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function groupBy(items, getKey) {
@@ -207,7 +224,9 @@
         customerId: String(planRow.customer_code || "-"),
         shipDate: String(planRow.ship_date || "-"),
         mode: normalizeMergeMode(planRow.merge_mode),
-        status: normalizeStatus(planRow.status),
+        status: planRow.has_missing_data
+          ? `缺少数据(${Number(planRow.missing_model_count || 0)})`
+          : normalizeStatus(planRow.status),
         orders: (detail.orders || []).map(row => row.order_no).filter(Boolean).join("+"),
         kpis: {
           lineCount: Number((detail.orders || []).length || 0),
@@ -308,6 +327,125 @@
         `装箱要求 ${state.plan.mode}`,
         `状态 ${state.plan.status}`,
       ].join(" ｜ ");
+    }
+  }
+
+  function renderMissingDataCard() {
+    if (!els.missingDataCard) return;
+    if (!state.apiMode || !state.planId) {
+      els.missingDataCard.style.display = "none";
+      return;
+    }
+
+    els.missingDataCard.style.display = "";
+    const data = state.missingData || {};
+    const missingDetails = data.missing_details || [];
+    const manualRules = data.manual_rules || [];
+    const manualByModel = new Map(manualRules.map(item => [String(item.model_code || "").trim(), item]));
+
+    if (els.missingDataMeta) {
+      els.missingDataMeta.textContent = `缺少 ${missingDetails.length} 个型号规则，补录后可直接重新计算`;
+    }
+
+    if (!missingDetails.length) {
+      if (els.missingDataTableWrap) els.missingDataTableWrap.style.display = "none";
+      if (els.missingDataEmpty) els.missingDataEmpty.style.display = "block";
+      if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = true;
+      return;
+    }
+
+    if (els.missingDataTableWrap) els.missingDataTableWrap.style.display = "block";
+    if (els.missingDataEmpty) els.missingDataEmpty.style.display = "none";
+    if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = false;
+
+    if (els.missingDataBody) {
+      els.missingDataBody.innerHTML = missingDetails
+        .map(row => {
+          const modelCode = String(row.model_code || "").trim();
+          const manual = manualByModel.get(modelCode) || {};
+          return `
+            <tr data-model-code="${escapeHtml(modelCode)}">
+              <td>${escapeHtml(modelCode)}</td>
+              <td>${Number(row.line_count || 0)}</td>
+              <td>${Number(row.qty || 0)}</td>
+              <td><input class="missing-row-input" data-field="inner_box_spec" value="${escapeHtml(manual.inner_box_spec || "")}" placeholder="例如 105" /></td>
+              <td><input class="missing-row-input" data-field="qty_per_carton" type="number" min="1" step="1" value="${escapeHtml(manual.qty_per_carton || "")}" /></td>
+              <td><input class="missing-row-input" data-field="gross_weight_kg" type="number" min="0" step="0.01" value="${escapeHtml(manual.gross_weight_kg || "")}" /></td>
+              <td><input class="missing-row-input" data-field="note" value="${escapeHtml(manual.note || "")}" /></td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
+  }
+
+  async function loadMissingData() {
+    if (!state.apiMode || !state.planId) {
+      state.missingData = null;
+      renderMissingDataCard();
+      return;
+    }
+    try {
+      state.missingData = await requestJson(`/api/plans/${state.planId}/missing-data`);
+      renderMissingDataCard();
+    } catch (err) {
+      state.missingData = { missing_details: [] };
+      renderMissingDataCard();
+      showToast(`缺少数据加载失败：${err.message}`);
+    }
+  }
+
+  function collectMissingDataForm() {
+    if (!els.missingDataBody) return [];
+    const rows = [...els.missingDataBody.querySelectorAll("tr[data-model-code]")];
+    return rows
+      .map(row => {
+        const modelCode = String(row.getAttribute("data-model-code") || "").trim();
+        const innerBoxSpec = String((row.querySelector('[data-field="inner_box_spec"]') || {}).value || "").trim();
+        const qtyPerCarton = String((row.querySelector('[data-field="qty_per_carton"]') || {}).value || "").trim();
+        const grossWeight = String((row.querySelector('[data-field="gross_weight_kg"]') || {}).value || "").trim();
+        const note = String((row.querySelector('[data-field="note"]') || {}).value || "").trim();
+        if (!modelCode || !innerBoxSpec) return null;
+        return {
+          model_code: modelCode,
+          inner_box_spec: innerBoxSpec,
+          qty_per_carton: qtyPerCarton || null,
+          gross_weight_kg: grossWeight || null,
+          note: note || null,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  async function saveMissingDataAndRecalculate() {
+    const rules = collectMissingDataForm();
+    if (!rules.length) {
+      showToast("请先补录内盒编号后再保存");
+      return;
+    }
+    if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = true;
+    try {
+      const saved = await requestJson(`/api/plans/${state.planId}/missing-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ box_rules: rules }),
+      });
+      await requestJson(`/api/plans/${state.planId}/calculate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      await initDataAndRender();
+      const remain = (saved && saved.remaining_missing_models) || [];
+      if (remain.length) {
+        showToast(`已保存 ${rules.length} 条，仍缺少 ${remain.length} 个型号`);
+      } else {
+        showToast(`已保存 ${rules.length} 条并完成重新计算`);
+      }
+    } catch (err) {
+      showToast(`保存失败：${err.message}`);
+    } finally {
+      if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = false;
     }
   }
 
@@ -1052,6 +1190,7 @@
 
   async function initDataAndRender() {
     const planId = getPlanIdFromUrl();
+    state.planId = /^\d+$/.test(String(planId || "")) ? Number(planId) : null;
     const apiCtx = await loadApiContext(planId);
     if (apiCtx) {
       state.apiMode = true;
@@ -1076,6 +1215,7 @@
     renderDatasetSwitch();
     renderPlanSelect();
     renderHeader();
+    await loadMissingData();
     renderTopFilters();
     rerenderContent();
   }
@@ -1113,6 +1253,10 @@
       state.currentMode = "pallet";
       if (state.viewerApi) state.viewerApi.rerender("pallet");
     });
+  }
+
+  if (els.saveMissingDataBtn) {
+    els.saveMissingDataBtn.addEventListener("click", saveMissingDataAndRecalculate);
   }
 
   initDataAndRender();

@@ -37,6 +37,33 @@
         </div>
       </section>
 
+      <section class="card" id="missingDataCard" style="display:none;">
+        <div class="plan-table-head">
+          <h4>缺少数据补录</h4>
+          <p id="missingDataMeta">-</p>
+        </div>
+        <div id="missingDataEmpty" class="empty" style="display:none; margin-top:10px;">当前计划没有缺少数据</div>
+        <div id="missingDataTableWrap" class="plan-table-scroll" style="display:none;">
+          <table>
+            <thead>
+              <tr>
+                <th>型号</th>
+                <th>缺失行数</th>
+                <th>缺失数量</th>
+                <th>内盒编号</th>
+                <th>一箱总数/只</th>
+                <th>毛重(kg)</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody id="missingDataBody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="margin-top:10px; justify-content:flex-end;">
+          <button id="saveMissingDataBtn" class="primary">保存并重新计算</button>
+        </div>
+      </section>
+
       <section class="card">
         <h3 style="margin-top:0;">方案明细（装箱 + 装托）</h3>
         <div id="planTableWrap" class="plan-table-wrap"></div>

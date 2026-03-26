@@ -276,6 +276,12 @@ th {
 .status.pending { background: #fff7d6; color: #7b5b00; }
 .status.done { background: #d9f8e5; color: #0e6d3c; }
 .status.draft { background: #e4ecf5; color: #334e68; }
+.status.bad { background: #fee2e2; color: #b91c1c; }
+
+.missing-row-input {
+  width: 100%;
+  min-width: 90px;
+}
 
 .solution {
   border: 1px solid #dce7f2;
