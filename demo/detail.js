@@ -13,6 +13,10 @@
     reset3dFilters: document.getElementById("reset3dFilters"),
     viewPackingBtn: document.getElementById("viewPackingBtn"),
     viewPalletBtn: document.getElementById("viewPalletBtn"),
+    viewerPager: document.getElementById("viewerPager"),
+    viewerPrevBtn: document.getElementById("viewerPrevBtn"),
+    viewerNextBtn: document.getElementById("viewerNextBtn"),
+    viewerPageInfo: document.getElementById("viewerPageInfo"),
     detailKpis: document.getElementById("detailKpis"),
     missingDataCard: document.getElementById("missingDataCard"),
     missingDataMeta: document.getElementById("missingDataMeta"),
@@ -55,6 +59,11 @@
     solutionIndex: 1,
     metricScope: "plan",
     currentMode: "pallet",
+    pageByMode: { packing: 1, pallet: 1 },
+    pageMetaByMode: {
+      packing: { page: 1, totalPages: 1, totalItems: 0, pageItems: 0 },
+      pallet: { page: 1, totalPages: 1, totalItems: 0, pageItems: 0 },
+    },
     viewerApi: null,
     planId: null,
     missingData: null,
@@ -701,10 +710,7 @@
       return null;
     }
 
-    const maxViewerRows = 260;
-    const displayRows = rows.length > maxViewerRows
-      ? rows.filter((_, idx) => idx % Math.ceil(rows.length / maxViewerRows) === 0)
-      : rows;
+    const displayRows = rows;
 
     els.viewer.innerHTML = "";
     const scene = new THREE.Scene();
@@ -742,6 +748,29 @@
     floor.position.y = -0.01;
     floor.receiveShadow = true;
     scene.add(floor);
+
+    const board = { width: 640, depth: 420 };
+    const boardPlate = new THREE.Mesh(
+      new THREE.PlaneGeometry(board.width, board.depth),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0.02 })
+    );
+    boardPlate.rotation.x = -Math.PI / 2;
+    boardPlate.position.y = 0.02;
+    boardPlate.receiveShadow = true;
+    scene.add(boardPlate);
+
+    const boardOutlinePoints = [
+      new THREE.Vector3(-board.width / 2, 0.06, -board.depth / 2),
+      new THREE.Vector3(board.width / 2, 0.06, -board.depth / 2),
+      new THREE.Vector3(board.width / 2, 0.06, board.depth / 2),
+      new THREE.Vector3(-board.width / 2, 0.06, board.depth / 2),
+      new THREE.Vector3(-board.width / 2, 0.06, -board.depth / 2),
+    ];
+    const boardOutline = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(boardOutlinePoints),
+      new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.75 })
+    );
+    scene.add(boardOutline);
 
     scene.add(new THREE.GridHelper(900, 28, 0x9fb3c8, 0xc8d6e5));
     const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 0.25 });
@@ -827,6 +856,30 @@
       group.add(sprite);
     }
 
+    function paginateItems(mode, items, pageSize) {
+      const size = Math.max(1, Number(pageSize) || 1);
+      const totalItems = items.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / size));
+      const current = Math.min(Math.max(1, Number((state.pageByMode || {})[mode] || 1)), totalPages);
+      state.pageByMode[mode] = current;
+      const start = (current - 1) * size;
+      const pageItems = items.slice(start, start + size);
+      const meta = { page: current, totalPages, totalItems, pageItems: pageItems.length, pageSize: size };
+      state.pageMetaByMode[mode] = meta;
+      return { pageItems, meta };
+    }
+
+    function updateViewerPager(mode) {
+      if (!els.viewerPager || !els.viewerPrevBtn || !els.viewerNextBtn || !els.viewerPageInfo) return;
+      const meta = (state.pageMetaByMode || {})[mode] || { page: 1, totalPages: 1, totalItems: 0, pageItems: 0 };
+      const multiPage = meta.totalPages > 1;
+      els.viewerPager.style.display = multiPage ? "inline-flex" : "none";
+      els.viewerPrevBtn.disabled = meta.page <= 1;
+      els.viewerNextBtn.disabled = meta.page >= meta.totalPages;
+      const scope = mode === "packing" ? "箱" : "托";
+      els.viewerPageInfo.textContent = `第 ${meta.page} / ${meta.totalPages} 页（共 ${meta.totalItems} ${scope}）`;
+    }
+
     function updateCartonInfo() {
       if (!els.cartonInfo) return;
       const boxId = els.packingBoxSelect ? els.packingBoxSelect.value : "ALL";
@@ -837,7 +890,9 @@
       }
       if (boxId === "ALL") {
         const upright = list.filter(item => item.pose === "竖放").length;
-        els.cartonInfo.textContent = `共 ${list.length} 箱，竖放 ${upright} 箱；可切换“装箱筛选（单箱）”查看明细。`;
+        const pageMeta = (state.pageMetaByMode || {}).packing || { page: 1, totalPages: 1, pageItems: list.length };
+        const pageHint = pageMeta.totalPages > 1 ? `当前页 ${pageMeta.page}/${pageMeta.totalPages}（展示 ${pageMeta.pageItems} 箱）` : "当前页展示全部外箱";
+        els.cartonInfo.textContent = `共 ${list.length} 箱，竖放 ${upright} 箱；${pageHint}。`;
         return;
       }
       const item = list[0];
@@ -868,15 +923,20 @@
       const labelMode = getLabelMode();
       const selected = els.packingBoxSelect ? els.packingBoxSelect.value : "ALL";
       const visible = selected === "ALL" ? displayRows : displayRows.filter(item => item.id === selected);
-      const cols = visible.length === 1 ? 1 : 2;
       const gapX = 95;
       const gapZ = 86;
+      const maxCols = Math.max(1, Math.floor((board.width - 40) / gapX));
+      const maxRows = Math.max(1, Math.floor((board.depth - 36) / gapZ));
+      const pageSize = maxCols * maxRows;
+      const { pageItems, meta } = paginateItems("packing", visible, pageSize);
+      const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(pageItems.length || 1))));
+      const rowsCount = Math.max(1, Math.ceil((pageItems.length || 1) / cols));
 
-      visible.forEach((box, idx) => {
+      pageItems.forEach((box, idx) => {
         const col = idx % cols;
         const row = Math.floor(idx / cols);
         const xBase = (col - (cols - 1) / 2) * gapX;
-        const zBase = (row - (Math.ceil(visible.length / cols) - 1) / 2) * gapZ;
+        const zBase = (row - (rowsCount - 1) / 2) * gapZ;
         const outerY = box.h / 2 + 1;
 
         addBox(group, { x: xBase, y: outerY, z: zBase, w: box.w, h: box.h, d: box.d, color: 0xf08c00, opacity: 0.12 });
@@ -919,7 +979,7 @@
                 ? true
                 : labelMode === "top"
                   ? isTopLayer
-                  : (visible.length === 1 ? isTopLayer : (isTopLayer && rz === 0 && cx % 2 === 0));
+                  : (pageItems.length === 1 ? isTopLayer : (isTopLayer && rz === 0 && cx % 2 === 0));
               if (showLabel) {
                 createLabel(group, model, x, y + innerH / 2 + 2.2, z, {
                   scaleX: 8.8 * labelScale,
@@ -933,6 +993,7 @@
           }
         }
       });
+      return meta;
     }
 
     function buildPalletView(group) {
@@ -941,7 +1002,12 @@
       const selectedPallet = els.palletSelect ? els.palletSelect.value : "ALL";
       const palletIds = uniqueSorted(displayRows.map(item => item.palletId));
       const visiblePallets = selectedPallet === "ALL" ? palletIds : palletIds.filter(item => item === selectedPallet);
-      const palletGap = 185;
+      const palletGapX = 185;
+      const palletGapZ = 175;
+      const maxCols = Math.max(1, Math.floor((board.width - 24) / palletGapX));
+      const maxRows = Math.max(1, Math.floor((board.depth - 24) / palletGapZ));
+      const pageSize = maxCols * maxRows;
+      const { pageItems: pagePallets, meta } = paginateItems("pallet", visiblePallets, pageSize);
       const layerPatterns = [
         ["F", "F", "U", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F", "F"],
         ["F", "U", "F", "F", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F"],
@@ -949,8 +1015,14 @@
         ["U", "F", "F", "F", "F", "U", "F", "F", "F", "F", "F", "U", "F", "F", "F", "F"],
       ];
 
-      visiblePallets.forEach((palletId, displayIndex) => {
-        const xOffset = visiblePallets.length === 1 ? 0 : (displayIndex - (visiblePallets.length - 1) / 2) * palletGap;
+      const colsPerPage = Math.max(1, Math.min(maxCols, pagePallets.length || 1));
+      const rowsPerPage = Math.max(1, Math.ceil((pagePallets.length || 1) / colsPerPage));
+
+      pagePallets.forEach((palletId, displayIndex) => {
+        const gridCol = displayIndex % colsPerPage;
+        const gridRow = Math.floor(displayIndex / colsPerPage);
+        const xOffset = (gridCol - (colsPerPage - 1) / 2) * palletGapX;
+        const zOffset = (gridRow - (rowsPerPage - 1) / 2) * palletGapZ;
         const palletBoxes = displayRows.filter(item => item.palletId === palletId);
         const toFlatDisplaySize = item => ({
           w: Math.max(12, Math.min(23, Math.round(item.w * 0.45))),
@@ -993,16 +1065,16 @@
           });
         }
 
-        addBox(group, { x: xOffset, y: 6, z: 0, w: 122, h: 12, d: 110, color: 0x8d5524 });
-        createLabel(group, `${palletId}\\n${palletBoxes.length}箱`, xOffset, 16, -66, { scaleX: 18, scaleY: 6, fontSize: 20 });
-        createLabel(group, "蓝色=平放  橙色=竖放", xOffset, 16, 66, { scaleX: 24, scaleY: 5, fontSize: 18, bg: "rgba(30, 41, 59, 0.82)" });
+        addBox(group, { x: xOffset, y: 6, z: zOffset, w: 122, h: 12, d: 110, color: 0x8d5524 });
+        createLabel(group, `${palletId}\\n${palletBoxes.length}箱`, xOffset, 16, zOffset - 66, { scaleX: 18, scaleY: 6, fontSize: 20 });
+        createLabel(group, "蓝色=平放  橙色=竖放", xOffset, 16, zOffset + 66, { scaleX: 24, scaleY: 5, fontSize: 18, bg: "rgba(30, 41, 59, 0.82)" });
 
         const cols = 4;
         const rowsCount = 4;
         const stepX = 27;
         const stepZ = 24;
         const startX = xOffset - ((cols - 1) * stepX) / 2;
-        const startZ = -((rowsCount - 1) * stepZ) / 2;
+        const startZ = zOffset - ((rowsCount - 1) * stepZ) / 2;
         let flatIdx = displayIndex;
         let uprightIdx = displayIndex;
         let baseY = 12;
@@ -1055,6 +1127,7 @@
           baseY += maxLayerH + 1.5;
         }
       });
+      return meta;
     }
 
     function setFilterState(mode) {
@@ -1068,21 +1141,22 @@
       if (sceneGroup) scene.remove(sceneGroup);
       state.currentMode = mode;
       sceneGroup = new THREE.Group();
-      const sampledHint = displayRows.length < rows.length
-        ? `（3D为保证流畅仅展示 ${displayRows.length}/${rows.length} 箱）`
-        : "";
+      let pageMeta = { page: 1, totalPages: 1, totalItems: 0, pageItems: 0 };
       if (mode === "packing") {
-        buildPackingView(sceneGroup);
-        els.sceneMeta.textContent = `当前：装箱视图（显示外箱编号+规格；外箱内显示型号）${sampledHint}`;
+        pageMeta = buildPackingView(sceneGroup) || pageMeta;
+        const pageHint = pageMeta.totalPages > 1 ? `（第 ${pageMeta.page}/${pageMeta.totalPages} 页）` : "";
+        els.sceneMeta.textContent = `当前：装箱视图（显示外箱编号+规格；外箱内显示型号）${pageHint}`;
         els.viewPackingBtn.classList.add("primary");
         els.viewPalletBtn.classList.remove("primary");
       } else {
-        buildPalletView(sceneGroup);
-        els.sceneMeta.textContent = `当前：装托视图（竖放外箱橙色+红色标识突出显示）${sampledHint}`;
+        pageMeta = buildPalletView(sceneGroup) || pageMeta;
+        const pageHint = pageMeta.totalPages > 1 ? `（第 ${pageMeta.page}/${pageMeta.totalPages} 页）` : "";
+        els.sceneMeta.textContent = `当前：装托视图（竖放外箱橙色+红色标识突出显示）${pageHint}`;
         els.viewPalletBtn.classList.add("primary");
         els.viewPackingBtn.classList.remove("primary");
       }
       setFilterState(mode);
+      updateViewerPager(mode);
       scene.add(sceneGroup);
       applyDefaultCameraPose(mode);
       updateCartonInfo();
@@ -1117,11 +1191,28 @@
     };
 
     bind(els.packingBoxSelect, "change", () => {
+      state.pageByMode.packing = 1;
       if (state.currentMode === "packing") setViewMode("packing");
       updateCartonInfo();
     });
     bind(els.palletSelect, "change", () => {
+      state.pageByMode.pallet = 1;
       if (state.currentMode === "pallet") setViewMode("pallet");
+    });
+    bind(els.viewerPrevBtn, "click", () => {
+      const mode = state.currentMode || "pallet";
+      const current = Number((state.pageByMode || {})[mode] || 1);
+      if (current <= 1) return;
+      state.pageByMode[mode] = current - 1;
+      setViewMode(mode);
+    });
+    bind(els.viewerNextBtn, "click", () => {
+      const mode = state.currentMode || "pallet";
+      const meta = (state.pageMetaByMode || {})[mode] || { totalPages: 1 };
+      const current = Number((state.pageByMode || {})[mode] || 1);
+      if (current >= Number(meta.totalPages || 1)) return;
+      state.pageByMode[mode] = current + 1;
+      setViewMode(mode);
     });
     bind(els.labelScaleSelect, "change", () => setViewMode(state.currentMode));
     bind(els.labelModeSelect, "change", () => setViewMode(state.currentMode));
@@ -1206,6 +1297,8 @@
   }
 
   function rerenderContent() {
+    state.pageByMode.packing = 1;
+    state.pageByMode.pallet = 1;
     const filteredRows = getFilteredRows();
     renderKpis(filteredRows);
     renderPlanTable(filteredRows);
@@ -1274,6 +1367,8 @@
       if (els.labelScaleSelect) els.labelScaleSelect.value = "2";
       if (els.labelModeSelect) els.labelModeSelect.value = "sparse";
       state.currentMode = "pallet";
+      state.pageByMode.packing = 1;
+      state.pageByMode.pallet = 1;
       rerenderContent();
       showToast("3D 筛选已重置");
     });
