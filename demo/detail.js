@@ -402,7 +402,6 @@
               <td>${Number(row.line_count || 0)}</td>
               <td>${Number(row.qty || 0)}</td>
               <td><input class="missing-row-input" data-field="inner_box_spec" value="${escapeHtml(manual.inner_box_spec || "")}" placeholder="例如 105" /></td>
-              <td><input class="missing-row-input" data-field="qty_per_carton" type="number" min="1" step="1" value="${escapeHtml(manual.qty_per_carton || "")}" /></td>
               <td><input class="missing-row-input" data-field="gross_weight_kg" type="number" min="0" step="0.01" value="${escapeHtml(manual.gross_weight_kg || "")}" /></td>
               <td><input class="missing-row-input" data-field="note" value="${escapeHtml(manual.note || "")}" /></td>
             </tr>
@@ -439,14 +438,12 @@
       .map(row => {
         const modelCode = String(row.getAttribute("data-model-code") || "").trim();
         const innerBoxSpec = String((row.querySelector('[data-field="inner_box_spec"]') || {}).value || "").trim();
-        const qtyPerCarton = String((row.querySelector('[data-field="qty_per_carton"]') || {}).value || "").trim();
         const grossWeight = String((row.querySelector('[data-field="gross_weight_kg"]') || {}).value || "").trim();
         const note = String((row.querySelector('[data-field="note"]') || {}).value || "").trim();
-        if (!modelCode || !innerBoxSpec) return null;
+        if (!modelCode || !innerBoxSpec || !grossWeight) return null;
         return {
           model_code: modelCode,
           inner_box_spec: innerBoxSpec,
-          qty_per_carton: qtyPerCarton || null,
           gross_weight_kg: grossWeight || null,
           note: note || null,
         };
@@ -457,7 +454,7 @@
   async function saveMissingDataAndRecalculate() {
     const rules = collectMissingDataForm();
     if (!rules.length) {
-      showToast("请先补录内盒编号后再保存");
+      showToast("请先补录内盒编号和毛重后再保存");
       return;
     }
     if (els.saveMissingDataBtn) els.saveMissingDataBtn.disabled = true;

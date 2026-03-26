@@ -290,13 +290,12 @@ def _row_get(row, key):
 
 
 def _is_complete_box_rule(row):
-    # 缺少内盒/一箱只数/毛重任一关键字段，都视为“规则不完整”。
+    # 新口径：缺少内盒或毛重任一关键字段，都视为“规则不完整”。
     if not row:
         return False
     inner_box_spec = str(_row_get(row, "inner_box_spec") or "").strip()
-    qty_per_carton = _to_positive_float(_row_get(row, "qty_per_carton"))
     gross_weight_kg = _to_positive_float(_row_get(row, "gross_weight_kg"))
-    return bool(inner_box_spec) and qty_per_carton is not None and gross_weight_kg is not None
+    return bool(inner_box_spec) and gross_weight_kg is not None
 
 
 def _split_active_rule_coverage(ship_date):
@@ -756,13 +755,10 @@ def save_plan_manual_rule(plan_id):
             inner_box_spec = str((row or {}).get("inner_box_spec") or "").strip()
             if not model_code or not inner_box_spec:
                 continue
-            qty_per_carton = row.get("qty_per_carton")
+            # 新口径不再收集一箱总数，统一置空保留兼容
+            qty_per_carton = None
             gross_weight_kg = row.get("gross_weight_kg")
             note = str((row or {}).get("note") or "").strip() or None
-            try:
-                qty_per_carton = int(float(str(qty_per_carton))) if qty_per_carton not in (None, "") else None
-            except (TypeError, ValueError):
-                qty_per_carton = None
             try:
                 gross_weight_kg = float(str(gross_weight_kg)) if gross_weight_kg not in (None, "") else None
             except (TypeError, ValueError):
