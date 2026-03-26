@@ -321,13 +321,13 @@ def get_snapshot_detail(snapshot_id):
 
         if snapshot["snapshot_type"] == "box":
             rows = conn.execute(
-                "SELECT * FROM rule_model_inner_box WHERE snapshot_id = ? ORDER BY id ASC LIMIT 50",
+                "SELECT * FROM rule_model_inner_box WHERE snapshot_id = ? ORDER BY id ASC",
                 (snapshot_id,),
             ).fetchall()
             preview = [dict(row) for row in rows]
         else:
             rows = conn.execute(
-                "SELECT * FROM rule_inner_outer_pallet WHERE snapshot_id = ? ORDER BY id ASC LIMIT 50",
+                "SELECT * FROM rule_inner_outer_pallet WHERE snapshot_id = ? ORDER BY id ASC",
                 (snapshot_id,),
             ).fetchall()
             preview = []
