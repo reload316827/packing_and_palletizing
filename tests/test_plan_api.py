@@ -6,6 +6,8 @@ import unittest
 from openpyxl import Workbook, load_workbook
 
 from backend_server import create_app
+from core.db import get_conn
+from core.time_utils import utc_now_iso
 
 
 class PlanApiTestCase(unittest.TestCase):
@@ -235,6 +237,51 @@ class PlanApiTestCase(unittest.TestCase):
             self.assertIn("ORD-001", str(ws["A3"].value or ""))
             wb.close()
             exported.close()
+
+    def test_missing_data_should_include_incomplete_box_rule_model(self):
+        # 若规则仅有型号但关键字段为空，仍应判定为缺少数据。
+        payload = {
+            "customer_code": "CUST-MISS",
+            "ship_date": "2999-01-02",
+            "merge_mode": "NO_MERGE",
+            "orders": [{"order_no": "ORD-MISS-001", "model": "480", "qty": 10}],
+        }
+        created = self.client.post("/api/plans", json=payload)
+        self.assertEqual(created.status_code, 201)
+        plan_id = created.get_json()["plan"]["id"]
+
+        now = utc_now_iso()
+        with get_conn() as conn:
+            snapshot_id = conn.execute(
+                """
+                INSERT INTO rule_snapshot
+                (snapshot_type, source_file, version, record_count, payload_preview, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("box", "tests_incomplete_480.xlsx", "box_test_incomplete_480", 1, "[]", now),
+            ).lastrowid
+            conn.execute(
+                """
+                INSERT INTO rule_model_inner_box
+                (snapshot_id, model_code, inner_box_spec, qty_per_carton, gross_weight_kg, raw_payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (snapshot_id, "480", None, None, None, "{}", now),
+            )
+            conn.execute(
+                """
+                INSERT INTO rule_snapshot_activation
+                (snapshot_type, snapshot_id, effective_from, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                ("box", snapshot_id, "2999-01-01T00:00:00+00:00", now),
+            )
+
+        missing = self.client.get("/api/plans/{0}/missing-data".format(plan_id))
+        self.assertEqual(missing.status_code, 200)
+        body = missing.get_json()
+        self.assertTrue(body["has_missing_data"])
+        self.assertIn("480", body["missing_models"])
 
     def test_import_template_upload_auto_create_and_calculate(self):
         with tempfile.TemporaryDirectory(prefix="plan_import_") as temp_dir:

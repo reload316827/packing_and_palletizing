@@ -123,10 +123,56 @@ def _get_plan_model_stats(conn, plan_id):
 
 def _get_manual_models(conn, plan_id):
     rows = conn.execute(
-        "SELECT model_code FROM plan_manual_box_rule WHERE plan_id = ?",
+        """
+        SELECT model_code, inner_box_spec, qty_per_carton, gross_weight_kg
+        FROM plan_manual_box_rule
+        WHERE plan_id = ?
+        """,
         (plan_id,),
     ).fetchall()
-    return {str(row["model_code"]).strip() for row in rows if row["model_code"] is not None}
+    complete = set()
+    incomplete = set()
+    for row in rows:
+        model_code = str(row["model_code"] or "").strip()
+        if not model_code:
+            continue
+        if _is_complete_box_rule(row):
+            complete.add(model_code)
+        else:
+            incomplete.add(model_code)
+    return complete, incomplete
+
+
+def _to_positive_float(value):
+    try:
+        text = str(value or "").strip().replace(",", "")
+        if not text:
+            return None
+        num = float(text)
+        return num if num > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _row_get(row, key):
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row.get(key)
+    try:
+        return row[key]
+    except Exception:
+        return None
+
+
+def _is_complete_box_rule(row):
+    # 缺少内盒/一箱只数/毛重任一关键字段，都视为“规则不完整”。
+    if not row:
+        return False
+    inner_box_spec = str(_row_get(row, "inner_box_spec") or "").strip()
+    qty_per_carton = _to_positive_float(_row_get(row, "qty_per_carton"))
+    gross_weight_kg = _to_positive_float(_row_get(row, "gross_weight_kg"))
+    return bool(inner_box_spec) and qty_per_carton is not None and gross_weight_kg is not None
 
 
 def _calc_missing_models(conn, plan_id, ship_date):
@@ -134,10 +180,21 @@ def _calc_missing_models(conn, plan_id, ship_date):
     if not order_models:
         return []
     active_rules = get_active_box_rule_bundle(ship_date).get("rules") or []
-    active_models = {str(row.get("model_code") or "").strip() for row in active_rules if str(row.get("model_code") or "").strip()}
-    manual_models = _get_manual_models(conn, plan_id)
-    covered = active_models.union(manual_models)
-    return sorted(model for model in order_models if model not in covered)
+    active_complete = set()
+    active_incomplete = set()
+    for row in active_rules:
+        model_code = str((row or {}).get("model_code") or "").strip()
+        if not model_code:
+            continue
+        if _is_complete_box_rule(row):
+            active_complete.add(model_code)
+        else:
+            active_incomplete.add(model_code)
+
+    manual_complete, manual_incomplete = _get_manual_models(conn, plan_id)
+    covered_complete = active_complete.union(manual_complete)
+    covered_incomplete = active_incomplete.union(manual_incomplete)
+    return sorted(model for model in order_models if model not in covered_complete or model in (covered_incomplete - covered_complete))
 
 
 @plans_bp.route("", methods=["GET"])
