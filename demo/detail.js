@@ -211,7 +211,7 @@
         models: models.length ? models : ["-"],
         grid: { cols: 3, rows: 2, layers: 2 },
         pattern: models.length ? models : ["-"],
-        pose: ["vertical", "upright", "stand"].includes(poseText) ? "竖放" : "平放",
+        pose: ["vertical", "stand", "v"].includes(poseText) ? "竖放" : "平放",
         usableSpec: String(box.usable_spec_cm || box.pallet_spec_cm || "108*108*90"),
         palletSpec: String(box.pallet_spec_cm || "116*116*103"),
       };
